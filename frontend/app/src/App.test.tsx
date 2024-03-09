@@ -80,7 +80,7 @@ jest.mock("@streamlit/app/src/connection/ConnectionManager", () => {
         return {
           basePath: "",
           host: "",
-          port: 8501,
+          port: 7860,
         }
       },
     }
@@ -964,7 +964,7 @@ describe("App", () => {
           .mockReturnValue({
             basePath: "foo",
             host: "",
-            port: 8501,
+            port: 7860,
           })
 
         sendForwardMessage("newSession", {
@@ -1407,7 +1407,7 @@ describe("App", () => {
       jest.spyOn(connectionManager, "getBaseUriParts").mockReturnValue({
         basePath: "foo/bar",
         host: "",
-        port: 8501,
+        port: 7860,
       })
 
       window.history.pushState({}, "", "/foo/bar/baz")

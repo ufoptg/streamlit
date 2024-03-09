@@ -34,7 +34,7 @@ const INITIAL_SLASH_RE = /^\/+/
  * Return the BaseUriParts for the global window
  */
 export function getWindowBaseUriParts(): BaseUriParts {
-  // If dev, always connect to 8501, since window.location.port is the Node
+  // If dev, always connect to 7860, since window.location.port is the Node
   // server's port 3000.
   // If changed, also change config.py
   const host = window.location.hostname

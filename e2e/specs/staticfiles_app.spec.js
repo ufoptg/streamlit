@@ -15,7 +15,7 @@
  */
 
 
-const STATICFILE_URL = 'http://localhost:8501/app/static/streamlit-mark-color.png';
+const STATICFILE_URL = 'http://localhost:7860/app/static/streamlit-mark-color.png';
 
 describe("static files", () => {
   beforeEach(() => {
@@ -50,7 +50,7 @@ describe("static files", () => {
   it("does not serve non-existing static file, return 404", () => {
     cy.request(
       {
-        url: 'http://localhost:8501/app/static/notexisting.jpeg',
+        url: 'http://localhost:7860/app/static/notexisting.jpeg',
         failOnStatusCode: false
       }).its('status').should('equal', 404)
   });

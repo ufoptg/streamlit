@@ -339,7 +339,7 @@ class PortRotateOneTest(unittest.TestCase):
                 PortRotateOneTest.which_port.assert_called_with(8502)
 
                 patched__set_option.assert_called_with(
-                    "server.port", 8501, config.ConfigOption.STREAMLIT_DEFINITION
+                    "server.port", 7860, config.ConfigOption.STREAMLIT_DEFINITION
                 )
 
 

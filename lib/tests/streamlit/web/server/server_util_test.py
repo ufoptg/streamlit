@@ -50,11 +50,11 @@ class ServerUtilTest(unittest.TestCase):
 
     @parameterized.expand(
         [
-            (None, None, "http://the_ip_address:8501"),
+            (None, None, "http://the_ip_address:7860"),
             (None, 9988, "http://the_ip_address:9988"),
-            ("foo", None, "http://the_ip_address:8501/foo"),
-            ("foo/", None, "http://the_ip_address:8501/foo"),
-            ("/foo/bar/", None, "http://the_ip_address:8501/foo/bar"),
+            ("foo", None, "http://the_ip_address:7860/foo"),
+            ("foo/", None, "http://the_ip_address:7860/foo"),
+            ("/foo/bar/", None, "http://the_ip_address:7860/foo/bar"),
             ("/foo/bar/", 9988, "http://the_ip_address:9988/foo/bar"),
         ]
     )

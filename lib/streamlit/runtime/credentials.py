@@ -87,8 +87,8 @@ def _send_email(email: str) -> None:
         "accept": "*/*",
         "accept-language": "en-US,en;q=0.9",
         "content-type": "text/plain",
-        "origin": "localhost:8501",
-        "referer": "localhost:8501/",
+        "origin": "localhost:7860",
+        "referer": "localhost:7860/",
     }
 
     dt = datetime.utcnow().isoformat() + "+00:00"

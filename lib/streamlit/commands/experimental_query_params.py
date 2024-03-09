@@ -42,7 +42,7 @@ def get_query_params() -> dict[str, list[str]]:
     Example
     -------
     Let's say the user's web browser is at
-    `http://localhost:8501/?show_map=True&selected=asia&selected=america`.
+    `http://localhost:7860/?show_map=True&selected=asia&selected=america`.
     Then, you can get the query parameters using the following:
 
     >>> import streamlit as st
@@ -83,7 +83,7 @@ def set_query_params(**query_params: Any) -> None:
     -------
 
     To point the user's web browser to something like
-    "http://localhost:8501/?show_map=True&selected=asia&selected=america",
+    "http://localhost:7860/?show_map=True&selected=asia&selected=america",
     you would do the following:
 
     >>> import streamlit as st

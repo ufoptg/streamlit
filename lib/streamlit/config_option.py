@@ -36,7 +36,7 @@ class ConfigOption:
 
         ConfigOption('browser.serverPort',
             description = 'Connect to the proxy at this port.',
-            default_val = 8501)
+            default_val = 7860)
 
     More complex config options resolve their values at runtime as follows:
 
@@ -44,9 +44,9 @@ class ConfigOption:
         def _proxy_port():
             """Connect to the proxy at this port.
 
-            Defaults to 8501.
+            Defaults to 7860.
             """
-            return 8501
+            return 7860
 
     NOTE: For complex config options, the function is called each time the
     option.value is evaluated!

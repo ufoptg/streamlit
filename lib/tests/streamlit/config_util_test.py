@@ -76,7 +76,7 @@ class ConfigUtilTest(unittest.TestCase):
         config_options = create_config_options(
             {
                 "server.address": "example.com",  # overrides default
-                "server.port": 8501,  # explicitly set to default
+                "server.port": 7860,  # explicitly set to default
             }
         )
 
@@ -93,7 +93,7 @@ class ConfigUtilTest(unittest.TestCase):
         # Config options explicitly set should *not* be commented out, even if
         # they are set to their default values.
         assert 'address = "example.com"' in lines
-        assert "port = 8501" in lines
+        assert "port = 7860" in lines
 
     @patch("click.secho")
     def test_ui_section_hidden(self, patched_echo):

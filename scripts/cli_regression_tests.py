@@ -175,7 +175,7 @@ class TestCLIRegressions:
             ), "Email address was not found in the credentials file"
 
     def test_port_reassigned(self):
-        """When starting a new Streamlit session, it will run on port 8501 by default. If 8501 is
+        """When starting a new Streamlit session, it will run on port 7860 by default. If 7860 is
         not available, it will use the next available port.
         """
 
@@ -184,18 +184,18 @@ class TestCLIRegressions:
             f"streamlit run --server.headless=true {REPO_ROOT}/examples/file_uploader.py",
         )
 
-        assert ":8501" in out_one, f"Incorrect port. See output:\n{out_one}"
+        assert ":7860" in out_one, f"Incorrect port. See output:\n{out_one}"
         assert ":8502" in out_two, f"Incorrect port. See output:\n{out_two}"
 
     def test_conflicting_port(self):
         out_one, out_two = self.run_double_proc(
             f"streamlit run --server.headless=true {REPO_ROOT}/examples/file_uploader.py",
-            f"streamlit run --server.headless=true --server.port=8501 {REPO_ROOT}/examples/file_uploader.py",
+            f"streamlit run --server.headless=true --server.port=7860 {REPO_ROOT}/examples/file_uploader.py",
         )
 
-        assert ":8501" in out_one, f"Incorrect port. See output:\n{out_one}"
+        assert ":7860" in out_one, f"Incorrect port. See output:\n{out_one}"
         assert (
-            "Port 8501 is already in use" in out_two
+            "Port 7860 is already in use" in out_two
         ), f"Incorrect conflict. See output:\n{out_one}"
 
     def test_cli_defined_port(self):

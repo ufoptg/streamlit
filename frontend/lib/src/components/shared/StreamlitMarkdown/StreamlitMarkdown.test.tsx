@@ -118,11 +118,11 @@ describe("StreamlitMarkdown", () => {
 
   it("passes props properly", () => {
     const source =
-      "<a class='nav_item' href='//0.0.0.0:8501/?p=some_page' target='_self'>Some Page</a>"
+      "<a class='nav_item' href='//0.0.0.0:7860/?p=some_page' target='_self'>Some Page</a>"
     render(<StreamlitMarkdown source={source} allowHTML={true} />)
     expect(screen.getByText("Some Page")).toHaveAttribute(
       "href",
-      "//0.0.0.0:8501/?p=some_page"
+      "//0.0.0.0:7860/?p=some_page"
     )
     expect(screen.getByText("Some Page")).toHaveAttribute("target", "_self")
   })

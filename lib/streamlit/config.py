@@ -735,7 +735,7 @@ _create_option(
 
         Don't use port 3000 which is reserved for internal development.
         """,
-    default_val=8501,
+    default_val=7860,
     type_=int,
 )
 
@@ -1345,7 +1345,7 @@ def get_config_options(
 def _check_conflicts() -> None:
     # Node-related conflicts
 
-    # When using the Node server, we must always connect to 8501 (this is
+    # When using the Node server, we must always connect to 7860 (this is
     # hard-coded in JS). Otherwise, the browser would decide what port to
     # connect to based on window.location.port, which in dev is going to
     # be (3000)

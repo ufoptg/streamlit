@@ -255,7 +255,7 @@ class BootstrapPrintTest(IsolatedAsyncioTestCase):
             {
                 "server.headless": False,
                 "server.baseUrlPath": "foo",
-                "server.port": 8501,
+                "server.port": 7860,
                 "global.developmentMode": False,
             }
         )
@@ -268,8 +268,8 @@ class BootstrapPrintTest(IsolatedAsyncioTestCase):
             bootstrap._print_url(False)
 
         out = sys.stdout.getvalue()
-        self.assertIn("Local URL: http://localhost:8501/foo", out)
-        self.assertIn("Network URL: http://internal-ip:8501/foo", out)
+        self.assertIn("Local URL: http://localhost:7860/foo", out)
+        self.assertIn("Network URL: http://internal-ip:7860/foo", out)
 
     @patch("streamlit.net_util.get_internal_ip")
     def test_print_urls_base_no_internal(self, mock_get_internal_ip):
@@ -280,7 +280,7 @@ class BootstrapPrintTest(IsolatedAsyncioTestCase):
             {
                 "server.headless": False,
                 "server.baseUrlPath": "foo",
-                "server.port": 8501,
+                "server.port": 7860,
                 "global.developmentMode": False,
             }
         )
@@ -293,8 +293,8 @@ class BootstrapPrintTest(IsolatedAsyncioTestCase):
             bootstrap._print_url(False)
 
         out = sys.stdout.getvalue()
-        self.assertIn("Local URL: http://localhost:8501/foo", out)
-        self.assertNotIn("Network URL: http://internal-ip:8501/foo", out)
+        self.assertIn("Local URL: http://localhost:7860/foo", out)
+        self.assertNotIn("Network URL: http://internal-ip:7860/foo", out)
 
     @patch("streamlit.net_util.get_internal_ip", return_value="internal-ip")
     def test_print_urls_ssl(self, mock_get_internal_ip):
