@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
-
-import inspect
 import json
 import os
 import unittest
@@ -27,20 +24,10 @@ import pytest
 
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit.components.lib.local_component_registry import LocalComponentRegistry
-from streamlit.components.types.base_component_registry import BaseComponentRegistry
-from streamlit.components.types.base_custom_component import BaseCustomComponent
 from streamlit.components.v1 import component_arrow
-from streamlit.components.v1.component_registry import (
-    ComponentRegistry,
-    _get_module_name,
-)
-from streamlit.components.v1.custom_component import CustomComponent
+from streamlit.components.v1.components import ComponentRegistry, CustomComponent
 from streamlit.errors import DuplicateWidgetID, StreamlitAPIException
 from streamlit.proto.Components_pb2 import SpecialArg
-from streamlit.runtime import Runtime, RuntimeConfig
-from streamlit.runtime.memory_media_file_storage import MemoryMediaFileStorage
-from streamlit.runtime.memory_uploaded_file_manager import MemoryUploadedFileManager
 from streamlit.type_util import to_bytes
 from tests.delta_generator_test_case import DeltaGeneratorTestCase
 
@@ -65,18 +52,8 @@ def _serialize_bytes_arg(key: str, value: Any) -> SpecialArg:
 class DeclareComponentTest(unittest.TestCase):
     """Test component declaration."""
 
-    def setUp(self) -> None:
-        config = RuntimeConfig(
-            script_path="mock/script/path.py",
-            command_line=None,
-            component_registry=LocalComponentRegistry(),
-            media_file_storage=MemoryMediaFileStorage("/mock/media"),
-            uploaded_file_manager=MemoryUploadedFileManager("/mock/upload"),
-        )
-        self.runtime = Runtime(config)
-
     def tearDown(self) -> None:
-        Runtime._instance = None
+        ComponentRegistry._instance = None
 
     def test_name(self):
         """Test component name generation"""
@@ -119,8 +96,7 @@ class DeclareComponentTest(unittest.TestCase):
             return path == PATH or path == os.path.abspath(PATH)
 
         with mock.patch(
-            "streamlit.components.v1.component_registry.os.path.isdir",
-            side_effect=isdir,
+            "streamlit.components.v1.components.os.path.isdir", side_effect=isdir
         ):
             component = components.declare_component("test", path=PATH)
 
@@ -161,58 +137,12 @@ class DeclareComponentTest(unittest.TestCase):
             str(exception_message.value),
         )
 
-    def test_module_name_not_none(self):
-        caller_frame = inspect.currentframe()
-        self.assertIsNotNone(caller_frame)
-        module_name = _get_module_name(caller_frame=caller_frame)
-
-        component = components.declare_component("test", url=URL)
-        self.assertEqual(
-            ComponentRegistry.instance().get_module_name(component.name),
-            module_name,
-        )
-
-    def test_get_registered_components(self):
-        component1 = components.declare_component("test1", url=URL)
-        component2 = components.declare_component("test2", url=URL)
-        component3 = components.declare_component("test3", url=URL)
-        expected_registered_component_names = set(
-            [component1.name, component2.name, component3.name]
-        )
-
-        registered_components = ComponentRegistry.instance().get_components()
-        self.assertEqual(
-            len(registered_components),
-            3,
-        )
-        registered_component_names = set(
-            [component.name for component in registered_components]
-        )
-        self.assertSetEqual(
-            registered_component_names, expected_registered_component_names
-        )
-
-    def test_when_registry_not_explicitly_initialized_return_defaultregistry(self):
-        ComponentRegistry._instance = None
-        components.declare_component("test", url=URL)
-        self.assertIsInstance(ComponentRegistry.instance(), LocalComponentRegistry)
-
 
 class ComponentRegistryTest(unittest.TestCase):
     """Test component registration."""
 
-    def setUp(self) -> None:
-        config = RuntimeConfig(
-            script_path="mock/script/path.py",
-            command_line=None,
-            component_registry=LocalComponentRegistry(),
-            media_file_storage=MemoryMediaFileStorage("/mock/media"),
-            uploaded_file_manager=MemoryUploadedFileManager("/mock/upload"),
-        )
-        self.runtime = Runtime(config)
-
     def tearDown(self) -> None:
-        Runtime._instance = None
+        ComponentRegistry._instance = None
 
     def test_register_component_with_path(self):
         """Registering a component should associate it with its path."""
@@ -223,8 +153,7 @@ class ComponentRegistryTest(unittest.TestCase):
 
         registry = ComponentRegistry.instance()
         with mock.patch(
-            "streamlit.components.types.base_custom_component.os.path.isdir",
-            side_effect=isdir,
+            "streamlit.components.v1.components.os.path.isdir", side_effect=isdir
         ):
             registry.register_component(
                 CustomComponent("test_component", path=test_path)
@@ -268,8 +197,7 @@ class ComponentRegistryTest(unittest.TestCase):
 
         registry = ComponentRegistry.instance()
         with mock.patch(
-            "streamlit.components.types.base_custom_component.os.path.isdir",
-            side_effect=isdir,
+            "streamlit.components.v1.components.os.path.isdir", side_effect=isdir
         ):
             registry.register_component(CustomComponent("test_component", test_path_1))
             registry.register_component(CustomComponent("test_component", test_path_1))
@@ -389,61 +317,6 @@ class InvokeComponentTest(DeltaGeneratorTestCase):
         proto = self.get_delta_from_queue().new_element.component_instance
         self.assertJSONEqual({"key": None, "default": None}, proto.json_args)
 
-    def test_widget_id_with_key(self):
-        """UNLIKE OTHER WIDGET TYPES, a component with a user-supplied `key` will have a stable widget ID
-        even when the component's other parameters change.
-
-        This is important because a component's iframe gets unmounted and remounted - wiping all its
-        internal state - when the component's ID changes. We want to be able to pass new data to a
-        component's frontend without causing a remount.
-        """
-
-        # Create a component instance with a key and some custom data
-        self.test_component(key="key", some_data=345)
-        proto1 = self.get_delta_from_queue().new_element.component_instance
-        self.assertJSONEqual(
-            {"key": "key", "default": None, "some_data": 345}, proto1.json_args
-        )
-
-        # Clear some ScriptRunCtx data so that we can re-register the same component
-        # without getting a DuplicateWidgetID error
-        self.script_run_ctx.widget_user_keys_this_run.clear()
-        self.script_run_ctx.widget_ids_this_run.clear()
-
-        # Create a second component instance with the same key, and different custom data
-        self.test_component(key="key", some_data=678, more_data="foo")
-        proto2 = self.get_delta_from_queue().new_element.component_instance
-        self.assertJSONEqual(
-            {"key": "key", "default": None, "some_data": 678, "more_data": "foo"},
-            proto2.json_args,
-        )
-
-        # The two component instances should have the same ID, *despite having different
-        # data passed to them.*
-        self.assertEqual(proto1.id, proto2.id)
-
-    def test_widget_id_without_key(self):
-        """Like all other widget types, two component instances with different data parameters,
-        and without a specified `key`, will have different widget IDs.
-        """
-
-        # Create a component instance without a key and some custom data
-        self.test_component(some_data=345)
-        proto1 = self.get_delta_from_queue().new_element.component_instance
-        self.assertJSONEqual(
-            {"key": None, "default": None, "some_data": 345}, proto1.json_args
-        )
-
-        # Create a second component instance with different custom data
-        self.test_component(some_data=678)
-        proto2 = self.get_delta_from_queue().new_element.component_instance
-        self.assertJSONEqual(
-            {"key": None, "default": None, "some_data": 678}, proto2.json_args
-        )
-
-        # The two component instances should have different IDs (just like any other widget would).
-        self.assertNotEqual(proto1.id, proto2.id)
-
     def test_simple_default(self):
         """Test the 'default' param with a JSON value."""
         return_value = self.test_component(default="baz")
@@ -540,33 +413,3 @@ class IFrameTest(DeltaGeneratorTestCase):
         self.assertEqual(el.iframe.width, 200)
         self.assertTrue(el.iframe.has_width)
         self.assertTrue(el.iframe.scrolling)
-
-
-class AlternativeComponentRegistryTest(unittest.TestCase):
-    """Test alternative component registry initialization."""
-
-    class AlternativeComponentRegistry(BaseComponentRegistry):
-        def __init__(self):
-            """Dummy implementation"""
-            pass
-
-        def register_component(self, component: BaseCustomComponent) -> None:
-            return None
-
-        def get_component_path(self, name: str) -> str | None:
-            return None
-
-        def get_module_name(self, name: str) -> str | None:
-            return None
-
-        def get_components(self) -> list[BaseCustomComponent]:
-            return []
-
-    def setUp(self) -> None:
-        super().setUp()
-        registry = AlternativeComponentRegistryTest.AlternativeComponentRegistry()
-        # ComponentRegistry.initialize(registry)
-        self.assertEqual(ComponentRegistry.instance(), registry)
-        self.assertIsInstance(
-            registry, AlternativeComponentRegistryTest.AlternativeComponentRegistry
-        )

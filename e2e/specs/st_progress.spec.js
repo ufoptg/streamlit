@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ describe("st.progress", () => {
       "50"
     );
 
-    cy.get(".stProgress").each((el, idx) => {
-      return cy.wrap(el).matchThemedSnapshots("progresbar-" + idx);
-    });
+    cy.get(".stProgress [role='progressbar']").matchThemedSnapshots(
+      "progressbar"
+    );
   });
 });

@@ -1,0 +1,9 @@
+.dockerignore
+docker
+Dockerfile
+docker-compose.yml
+.git
+.gitignore
+frontend/node_modules
+frontend/test_results
+venv

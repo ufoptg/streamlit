@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,36 +34,28 @@ def send_notification():
         "js": "on javascript tests",
         "py_prod": "on python prod dependencies test",
         "cypress": "on cypress tests",
-        "playwright": "on playwright tests",
         "build": "to release",
     }
 
-    run_id = os.getenv("RUN_ID")
     workflow = sys.argv[1]
     message_key = sys.argv[2]
     payload = None
 
     if workflow == "nightly":
         failure = nightly_slack_messages[message_key]
-        payload = {
-            "text": f":blobonfire: Nightly build failed {failure} - <https://github.com/streamlit/streamlit/actions/runs/{run_id}|Link to run>"
-        }
+        payload = {"text": f":blobonfire: Nightly build failed {failure}"}
 
     if workflow == "candidate":
         if message_key == "success":
             payload = {"text": ":rocket: Release Candidate was successful!"}
         else:
-            payload = {
-                "text": f":blobonfire: Release Candidate failed - <https://github.com/streamlit/streamlit/actions/runs/{run_id}|Link to run>"
-            }
+            payload = {"text": ":blobonfire: Release Candidate failed"}
 
     if workflow == "release":
         if message_key == "success":
             payload = {"text": ":rocket: Release was successful!"}
         else:
-            payload = {
-                "text": f":blobonfire: Release failed - <https://github.com/streamlit/streamlit/actions/runs/{run_id}|Link to run>"
-            }
+            payload = {"text": ":blobonfire: Release failed"}
 
     if payload:
         response = requests.post(webhook, json=payload)
@@ -75,6 +67,7 @@ def send_notification():
 
 
 def main():
+
     send_notification()
 
 

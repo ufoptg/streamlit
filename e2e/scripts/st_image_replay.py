@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ img = np.repeat(0, 10000).reshape(100, 100)
 gif = create_gif(64, frames=32)
 
 
-@st.cache_data
+@st.experimental_memo
 def numpy_image():
     st.image(img, caption="Black Square with no output format specified", width=100)
 
@@ -63,13 +63,15 @@ numpy_image()
 numpy_image()
 
 
-@st.cache_data
+@st.experimental_memo
 def svg_image():
     st.image(
-        """
-<svg>
-  <circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="red" />
-</svg>
+        """<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100">
+        <clipPath id="clipCircle">
+            <circle r="25" cx="25" cy="25"/>
+        </clipPath>
+        <image href="https://avatars.githubusercontent.com/karriebear" width="50" height="50" clip-path="url(#clipCircle)"/>
+    </svg>
     """
     )
 
@@ -78,7 +80,7 @@ svg_image()
 svg_image()
 
 
-@st.cache_data
+@st.experimental_memo
 def gif_image():
     st.image(gif, width=100)
 
@@ -87,7 +89,7 @@ gif_image()
 gif_image()
 
 
-@st.cache_data
+@st.experimental_memo
 def url_image():
     st.image("https://avatars.githubusercontent.com/anoctopus", width=200)
 

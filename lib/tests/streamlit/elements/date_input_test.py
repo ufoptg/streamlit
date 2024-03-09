@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ from pytest import raises
 import streamlit as st
 from streamlit.errors import StreamlitAPIException
 from streamlit.proto.LabelVisibilityMessage_pb2 import LabelVisibilityMessage
-from streamlit.testing.v1.app_test import AppTest
 from tests.delta_generator_test_case import DeltaGeneratorTestCase
 
 
@@ -50,16 +49,6 @@ class DateInputTest(DeltaGeneratorTestCase):
 
         c = self.get_delta_from_queue().new_element.date_input
         self.assertEqual(c.disabled, True)
-
-    def test_none_value(self):
-        """Test that it can be called with None as value."""
-        st.date_input("the label", value=None)
-
-        c = self.get_delta_from_queue().new_element.date_input
-        self.assertEqual(c.label, "the label")
-        # If a proto property is null is not determined by this value,
-        # but by the check via the HasField method:
-        self.assertEqual(c.default, [])
 
     @parameterized.expand(
         [
@@ -173,7 +162,7 @@ class DateInputTest(DeltaGeneratorTestCase):
 
     def test_range_session_state(self):
         """Test a range set by session state."""
-        date_range_input = [date(2024, 1, 15), date(2024, 1, 15) + timedelta(2)]
+        date_range_input = [datetime.today(), datetime.today() + timedelta(2)]
         state = st.session_state
         state["date_range"] = date_range_input[:]
 
@@ -182,15 +171,10 @@ class DateInputTest(DeltaGeneratorTestCase):
             key="date_range",
         )
 
-        c = self.get_delta_from_queue().new_element.date_input
-
         assert date_range == date_range_input
 
-        self.assertEqual(c.value, ["2024/01/15", "2024/01/17"])
-        self.assertEqual(c.is_range, True)
-
     def test_inside_column(self):
-        """Test that it works correctly inside a column."""
+        """Test that it works correctly inside of a column."""
         col1, col2 = st.columns(2)
 
         with col1:
@@ -226,70 +210,3 @@ class DateInputTest(DeltaGeneratorTestCase):
             "Unsupported label_visibility option 'wrong_value'. Valid values are "
             "'visible', 'hidden' or 'collapsed'.",
         )
-
-    @parameterized.expand(
-        [
-            ("YYYY/MM/DD"),
-            ("DD/MM/YYYY"),
-            ("MM/DD/YYYY"),
-            ("YYYY.MM.DD"),
-            ("DD.MM.YYYY"),
-            ("MM.DD.YYYY"),
-            ("YYYY-MM-DD"),
-            ("DD-MM-YYYY"),
-            ("MM-DD-YYYY"),
-        ]
-    )
-    def test_supported_date_format_values(self, format: str):
-        """Test that it can be called with supported date formats."""
-        st.date_input("the label", format=format)
-        msg = self.get_delta_from_queue().new_element.date_input
-        self.assertEqual(msg.label, "the label")
-        self.assertEqual(msg.format, format)
-
-    @parameterized.expand(
-        [
-            ("YYYY:MM:DD"),  # Unexpected separator
-            ("DD:MM:YYYY"),  # Unexpected separator
-            ("MM:DD:YYYY"),  # Unexpected separator
-            ("YYYY/DD/MM"),  # Incorrect order
-            ("DD/YYYY/MM"),  # Incorrect order
-            ("MM/YYYY/DD"),  # Incorrect order
-            ("YYYY/MM/DDo"),  # Unsupported format
-            ("DDo/MM/YYYY"),  # Unsupported format
-            ("Mo/DD/YYYY"),  # Unsupported format
-            ("Q/DD/YYYY"),  # Unsupported format
-            ("YYYY/QQ/DD"),  # Unsupported format
-            ("YYYY/Q/DD"),  # Unsupported format
-            ("YYYY/MM/DD HH:mm:ss"),  # Unsupported format
-            (""),  # Empty not allowed
-        ]
-    )
-    def test_invalid_date_format_values(self, format: str):
-        """Test that it raises an exception for invalid date formats."""
-        with self.assertRaises(StreamlitAPIException) as ex:
-            st.date_input("the label", format=format)
-        self.assertTrue(str(ex.exception).startswith("The provided format"))
-
-
-def test_date_input_interaction():
-    """Test interactions with an empty date_input widget."""
-
-    def script():
-        import streamlit as st
-
-        st.date_input("the label", value=None)
-
-    at = AppTest.from_function(script).run()
-    date_input = at.date_input[0]
-    assert date_input.value is None
-
-    # Set the value to a specific date
-    at = date_input.set_value(date(2012, 1, 3)).run()
-    date_input = at.date_input[0]
-    assert date_input.value == date(2012, 1, 3)
-
-    # # Clear the value
-    at = date_input.set_value(None).run()
-    date_input = at.date_input[0]
-    assert date_input.value is None

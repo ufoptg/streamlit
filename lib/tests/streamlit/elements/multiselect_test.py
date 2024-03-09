@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,18 +18,15 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
-import pytest
 from parameterized import parameterized
 
 import streamlit as st
-from streamlit.elements.widgets.multiselect import (
+from streamlit.elements.multiselect import (
     _get_default_count,
     _get_over_max_options_message,
 )
 from streamlit.errors import StreamlitAPIException
 from streamlit.proto.LabelVisibilityMessage_pb2 import LabelVisibilityMessage
-from streamlit.testing.v1.app_test import AppTest
-from streamlit.testing.v1.util import patch_config_options
 from tests.delta_generator_test_case import DeltaGeneratorTestCase
 
 
@@ -141,7 +138,6 @@ class Multiselectbox(DeltaGeneratorTestCase):
         self.assertEqual(c.label, "the label")
         self.assertListEqual(c.default[:], expected)
         self.assertEqual(c.options, ["Coffee", "Tea", "Water"])
-        self.assertEqual(c.placeholder, "Choose an option")
 
     @parameterized.expand(
         [
@@ -369,46 +365,3 @@ Please select at most 2 options.
             _get_over_max_options_message(current_selections, max_selections),
             expected_msg,
         )
-
-    def test_placeholder(self):
-        """Test that it can be called with placeholder params."""
-        st.multiselect(
-            "the label", ["Coffee", "Tea", "Water"], placeholder="Select your beverage"
-        )
-
-        c = self.get_delta_from_queue().new_element.multiselect
-        self.assertEqual(c.placeholder, "Select your beverage")
-
-
-def test_multiselect_enum_coercion():
-    """Test E2E Enum Coercion on a selectbox."""
-
-    def script():
-        from enum import Enum
-
-        import streamlit as st
-
-        class EnumA(Enum):
-            A = 1
-            B = 2
-            C = 3
-
-        selected_list = st.multiselect("my_enum", EnumA, default=[EnumA.A, EnumA.C])
-        st.text(id(selected_list[0].__class__))
-        st.text(id(EnumA))
-        st.text(all(selected in EnumA for selected in selected_list))
-
-    at = AppTest.from_function(script).run()
-
-    def test_enum():
-        multiselect = at.multiselect[0]
-        original_class = multiselect.value[0].__class__
-        multiselect.set_value([original_class.A, original_class.B]).run()
-        assert at.text[0].value == at.text[1].value, "Enum Class ID not the same"
-        assert at.text[2].value == "True", "Not all enums found in class"
-
-    with patch_config_options({"runner.enumCoercion": "nameOnly"}):
-        test_enum()
-    with patch_config_options({"runner.enumCoercion": "off"}):
-        with pytest.raises(AssertionError):
-            test_enum()  # expect a failure with the config value off.

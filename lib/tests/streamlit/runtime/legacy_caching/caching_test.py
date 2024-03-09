@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -113,7 +113,6 @@ class CacheTest(DeltaGeneratorTestCase):
 
         exception.assert_not_called()
 
-    @patch("streamlit.runtime.legacy_caching.caching.show_deprecation_warning", Mock())
     @patch("streamlit.runtime.legacy_caching.caching._show_cached_st_function_warning")
     def test_cached_st_function_warning(self, warning):
         st.text("foo")
@@ -424,7 +423,6 @@ class CacheErrorsTest(DeltaGeneratorTestCase):
     that pull useful debug info from the code are working.
     """
 
-    @patch("streamlit.runtime.legacy_caching.caching.show_deprecation_warning", Mock())
     def test_st_warning_text(self):
         @st.cache
         def st_warning_text_func():
@@ -457,7 +455,6 @@ to suppress the warning.
         self.assertEqual(el.markdown.body, "hi")
 
     @parameterized.expand([(True,), (False,)])
-    @patch("streamlit.runtime.legacy_caching.caching.show_deprecation_warning", Mock())
     def test_mutation_warning_text(self, show_error_details: bool):
         with testutil.patch_config_options(
             {"client.showErrorDetails": show_error_details}
@@ -618,53 +615,6 @@ Object of type tests.streamlit.runtime.legacy_caching.caching_test.CacheErrorsTe
         # self.assertNotEqual(len(ep.stack_trace), 0)
         self.assertEqual(ep.message_is_markdown, True)
         self.assertEqual(ep.is_warning, False)
-
-    @patch("streamlit.runtime.legacy_caching.caching.show_deprecation_warning")
-    def test_type_specific_deprecation_warning(
-        self, show_deprecation_warning: Mock
-    ) -> None:
-        """Calling a @st.cache function shows a type-specific deprecation warning for certain types."""
-
-        @st.cache
-        def func():
-            return 42
-
-        # We show a deprecation warning when a cached function is called, not when it's
-        # declared. (The warning depends on the return value of the cached function, so
-        # we can't show it at declaration time.)
-        show_deprecation_warning.assert_not_called()
-
-        self.assertEqual(42, func())
-
-        expected_message = (
-            "`st.cache` is deprecated. Please use one of Streamlit's new caching commands,\n"
-            "`st.cache_data` or `st.cache_resource`. Based on this function's return value\n"
-            "of type `int`, we recommend using `st.cache_data`.\n\n"
-            "More information [in our docs](https://docs.streamlit.io/library/advanced-features/caching)."
-        )
-        show_deprecation_warning.assert_called_once_with(expected_message)
-
-    @patch("streamlit.runtime.legacy_caching.caching.show_deprecation_warning")
-    def test_generic_deprecation_warning(self, show_deprecation_warning: Mock) -> None:
-        """Calling a @st.cache function shows a generic deprecation warning for other types."""
-
-        class MockClass:
-            pass
-
-        @st.cache
-        def func():
-            return MockClass()
-
-        show_deprecation_warning.assert_not_called()
-
-        self.assertIsInstance(func(), MockClass)
-
-        expected_message = (
-            "`st.cache` is deprecated. Please use one of Streamlit's new caching commands,\n"
-            "`st.cache_data` or `st.cache_resource`.\n\n"
-            "More information [in our docs](https://docs.streamlit.io/library/advanced-features/caching)."
-        )
-        show_deprecation_warning.assert_called_once_with(expected_message)
 
 
 def normalize_md(txt):

@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ class ServerTestCase(tornado.testing.AsyncHTTPTestCase):
     def get_app(self) -> tornado.web.Application:
         self.server = Server(
             "/not/a/script.py",
-            is_hello=False,
+            "test command line",
         )
         app = self.server._create_app()
         return app
@@ -63,25 +63,16 @@ class ServerTestCase(tornado.testing.AsyncHTTPTestCase):
         parts[0] = "ws"
         return urllib.parse.urlunparse(tuple(parts))
 
-    async def ws_connect(self, existing_session_id=None) -> WebSocketClientConnection:
+    async def ws_connect(self) -> WebSocketClientConnection:
         """Open a websocket connection to the server.
 
         Returns
         -------
         WebSocketClientConnection
             The connected websocket client.
-        """
-        # See the comment in WebsocketConnection.tsx about how we repurpose the
-        # Sec-WebSocket-Protocol header for more information on how this works.
-        if existing_session_id is None:
-            subprotocols = ["streamlit", "PLACEHOLDER_AUTH_TOKEN"]
-        else:
-            subprotocols = ["streamlit", "PLACEHOLDER_AUTH_TOKEN", existing_session_id]
 
-        return await tornado.websocket.websocket_connect(
-            self.get_ws_url("/_stcore/stream"),
-            subprotocols=subprotocols,
-        )
+        """
+        return await tornado.websocket.websocket_connect(self.get_ws_url("/stream"))
 
     async def read_forward_msg(
         self, ws_client: WebSocketClientConnection
@@ -111,7 +102,7 @@ class ServerTestCase(tornado.testing.AsyncHTTPTestCase):
         """
 
         return mock.patch(
-            "streamlit.runtime.websocket_session_manager.AppSession",
+            "streamlit.runtime.runtime.AppSession",
             # new_callable must return a function, not an object, or else
             # there will only be a single AppSession mock. Hence the lambda.
             new_callable=lambda: self._create_mock_app_session,

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,11 +24,8 @@ describe("kill server", () => {
   it("disconnects the client", () => {
     cy.get("[data-testid='stConnectionStatus']").should("not.exist");
 
-    cy.window().then((win) => {
-      // We shut down the runtime entirely rather than just close the websocket
-      // connection as the client will immediately reconnect if we just do the
-      // latter.
-      win.streamlitDebug.shutdownRuntime();
+    cy.window().then(win => {
+      win.streamlitDebug.closeConnection();
 
       cy.get("[data-testid='stConnectionStatus'] label").should(
         "have.text",

@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,10 +15,10 @@
 import asyncio
 import threading
 from queue import Queue
-from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
 
 from streamlit.runtime import Runtime, RuntimeConfig
+from tests.isolated_asyncio_test_case import IsolatedAsyncioTestCase
 
 
 class RuntimeThreadingTest(IsolatedAsyncioTestCase):
@@ -45,14 +45,7 @@ class RuntimeThreadingTest(IsolatedAsyncioTestCase):
                 # so that the main thread can retrieve it safely. If Runtime
                 # creation fails, we'll stick an Exception in the queue instead.
                 config = RuntimeConfig(
-                    "mock/script/path.py",
-                    "",
-                    component_registry=MagicMock(),
-                    media_file_storage=MagicMock(),
-                    uploaded_file_manager=MagicMock(),
-                    session_manager_class=MagicMock,
-                    session_storage=MagicMock(),
-                    cache_storage_manager=MagicMock(),
+                    "mock/script/path.py", "", media_file_storage=MagicMock()
                 )
                 queue.put(Runtime(config))
             except BaseException as e:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,8 +31,15 @@ import requests
 
 ROOT_DIR = dirname(dirname(abspath(__file__)))  # streamlit root directory
 FRONTEND_DIR = join(ROOT_DIR, "frontend")
+COMPONENT_TEMPLATE_DIRS = {
+    "template": join(ROOT_DIR, "component-template/template/my_component"),
+    "template-reactless": join(
+        ROOT_DIR, "component-template/template-reactless/my_component"
+    ),
+}
 
 CREDENTIALS_FILE = os.path.expanduser("~/.streamlit/credentials.toml")
+IS_CIRCLECI = os.getenv("CIRCLECI")
 
 
 class QuitException(BaseException):
@@ -227,6 +234,7 @@ def run_test(
         # Loop until the test succeeds or is skipped.
         while result not in (SUCCESS, SKIP, QUIT):
             cypress_command = ["yarn", "cy:run", "--spec", specpath]
+            cypress_command.extend(["--reporter", "cypress-circleci-reporter"])
             cypress_command.extend(ctx.cypress_flags)
 
             click.echo(
@@ -297,6 +305,41 @@ def run_test(
         raise QuitException()
 
     return result == SUCCESS
+
+
+def run_component_template_e2e_test(ctx: Context, template_dir: str, name: str) -> bool:
+    """Build a component template and run its e2e tests."""
+    frontend_dir = join(template_dir, "frontend")
+
+    # Install the template's npm dependencies into its node_modules.
+    subprocess.run(
+        ["yarn", "install"],
+        cwd=frontend_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    # Start the template's dev server.
+    with AsyncSubprocess(["yarn", "start"], cwd=frontend_dir) as webpack_proc:
+        # Run the test!
+        main_script_path = join(template_dir, "__init__.py")
+        spec_path = join(ROOT_DIR, "e2e/specs/component_template.spec.js")
+
+        ctx.cypress_env_vars["COMPONENT_TEMPLATE_TYPE"] = name
+        success = run_test(ctx, spec_path, ["streamlit", "run", main_script_path])
+        del ctx.cypress_env_vars["COMPONENT_TEMPLATE_TYPE"]
+
+        webpack_stdout = webpack_proc.terminate()
+
+    if not success:
+        click.echo(
+            f"{click.style('webpack output:', fg='yellow', bold=True)}"
+            f"\n{webpack_stdout}"
+            f"\n"
+        )
+
+    return success
 
 
 def is_app_server_alive():
@@ -424,42 +467,23 @@ def run_e2e_tests(
                     show_output=verbose,
                 )
 
-            elif basename(spec_path) == "staticfiles_app.spec.js":
+            elif basename(spec_path) == "component_template.spec.js":
+                if flaky_tests:
+                    continue
+                for name, template_dir in COMPONENT_TEMPLATE_DIRS.items():
+                    run_component_template_e2e_test(ctx, template_dir, name)
+
+            elif basename(spec_path) == "multipage_apps.spec.js":
                 test_name, _ = splitext(basename(spec_path))
                 test_name, _ = splitext(test_name)
                 test_path = join(
-                    ctx.tests_dir,
-                    "scripts",
-                    "staticfiles_apps",
-                    "streamlit_static_app.py",
+                    ctx.tests_dir, "scripts", "multipage_apps", "streamlit_app.py"
                 )
                 if os.path.exists(test_path):
                     run_test(
                         ctx,
                         str(spec_path),
-                        [
-                            "streamlit",
-                            "run",
-                            "--server.enableStaticServing=true",
-                            test_path,
-                        ],
-                        show_output=verbose,
-                    )
-            elif basename(spec_path) == "hostframe.spec.js":
-                test_name, _ = splitext(basename(spec_path))
-                test_name, _ = splitext(test_name)
-                test_path = join(
-                    ctx.tests_dir, "scripts", "hostframe", "hostframe_app.py"
-                )
-                if os.path.exists(test_path):
-                    run_test(
-                        ctx,
-                        str(spec_path),
-                        [
-                            "streamlit",
-                            "run",
-                            test_path,
-                        ],
+                        ["streamlit", "run", "--ui.hideSidebarNav=false", test_path],
                         show_output=verbose,
                     )
 

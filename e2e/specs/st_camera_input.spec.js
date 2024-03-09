@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,8 @@
 
 describe("st.camera_input", () => {
   before(() => {
-    // Increasing timeout since uploading and rendering images can be slow.
-    Cypress.config("defaultCommandTimeout", 30000);
-
     Cypress.Cookies.defaults({
-      preserve: ["_streamlit_xsrf"],
+      preserve: ["_xsrf"]
     });
     cy.loadApp("http://localhost:3000/");
   });
@@ -29,13 +26,7 @@ describe("st.camera_input", () => {
     cy.get("[data-testid='stCameraInput']").should("have.length.at.least", 2);
   });
 
-  it("capture photo when 'Take photo' button clicked", {
-    retries: {runMode: 1}
-  }, () => {
-    // Be generous with some of the timeouts in this test as uploading and
-    // rendering images can be quite slow.
-    const timeout = 30000;
-
+  it("capture photo when 'Take photo' button clicked", () => {
     cy.get("[data-testid='stCameraInput']")
       .contains("Learn how to allow access.")
       .should("not.exist");
@@ -43,18 +34,14 @@ describe("st.camera_input", () => {
     cy.get("[data-testid='stCameraInputButton']")
       .should("have.length.at.least", 2)
       .first()
-      .should("not.be.disabled")
-
-    // Wait until the camera is ready, there some delay even between
-    // `onUserMedia` event and camera is ready.
-    cy.wait(2000)
-
-    cy.getIndexed("[data-testid='stCameraInputButton']", 0)
+      .wait(1000)
       .should("not.be.disabled")
       .contains("Take Photo")
-      .click({force: true});
+      .click();
 
-    cy.get("[data-testid='stImage']", {timeout}).should("have.length.at.least", 1);
+    cy.get("img").should("have.length.at.least", 2);
+
+    cy.get("[data-testid='stImage']").should("have.length.at.least", 1);
   });
 
   it("Remove photo when 'Clear photo' button clicked", () => {
@@ -65,9 +52,11 @@ describe("st.camera_input", () => {
     cy.get("[data-testid='stImage']").should("not.exist");
   });
 
-  it("shows disabled widget correctly", {retries: {runMode: 1}}, () => {
+  it("shows disabled widget correctly", () => {
     cy.get("[data-testid='stCameraInput']").should("have.length.at.least", 2);
 
-    cy.getIndexed("[data-testid='stCameraInput']", 1).matchThemedSnapshots("disabled-camera-input");
+    cy.getIndexed("[data-testid='stCameraInput']", 1).matchThemedSnapshots(
+      "disabled-camera-input"
+    );
   });
 });

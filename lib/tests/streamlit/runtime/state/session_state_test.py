@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,27 +20,25 @@ from typing import Any, List, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as hst
 
 import streamlit as st
 import tests.streamlit.runtime.state.strategies as stst
 from streamlit.errors import StreamlitAPIException
-from streamlit.proto.Common_pb2 import FileURLs as FileURLsProto
 from streamlit.proto.WidgetStates_pb2 import WidgetState as WidgetStateProto
+from streamlit.proto.WidgetStates_pb2 import WidgetStates as WidgetStatesProto
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from streamlit.runtime.state import SessionState, get_session_state
-from streamlit.runtime.state.common import GENERATED_WIDGET_ID_PREFIX
 from streamlit.runtime.state.session_state import (
+    GENERATED_WIDGET_KEY_PREFIX,
     Serialized,
     Value,
     WidgetMetadata,
     WStates,
 )
-from streamlit.runtime.uploaded_file_manager import UploadedFile, UploadedFileRec
-from streamlit.testing.v1.app_test import AppTest
+from streamlit.runtime.uploaded_file_manager import UploadedFileRec
 from tests.delta_generator_test_case import DeltaGeneratorTestCase
-from tests.testutil import patch_config_options
 
 identity = lambda x: x
 
@@ -133,8 +131,8 @@ class WStateTests(unittest.TestCase):
     def test_values(self):
         assert self.wstates.values() == {"5", 5}
 
-    def test_remove_stale_widgets(self):
-        self.wstates.remove_stale_widgets({"widget_id_1"})
+    def test_cull_nonexistent(self):
+        self.wstates.cull_nonexistent({"widget_id_1"})
         assert "widget_id_1" in self.wstates
         assert "widget_id_2" not in self.wstates
 
@@ -258,85 +256,33 @@ class SessionStateTest(DeltaGeneratorTestCase):
         ctx = get_script_run_ctx()
         assert ctx.session_state["color"] is not color
 
+    @patch("streamlit.warning")
+    def test_callbacks_with_experimental_rerun(self, patched_warning):
+        """Calling 'experimental_rerun' from within a widget callback
+        is disallowed and results in a warning.
+        """
 
-def test_callbacks_with_rerun():
-    """Calling 'rerun' from within a widget callback
-    is disallowed and results in a warning.
-    """
+        # A mock on_changed handler for our checkbox. It will call
+        # `st.experimental_rerun`, which should result in a warning
+        # being printed to the user's app.
+        mock_on_checkbox_changed = MagicMock(side_effect=st.experimental_rerun)
 
-    def script():
-        import streamlit as st
+        st.checkbox("the checkbox", on_change=mock_on_checkbox_changed)
 
-        def callback():
-            st.session_state["message"] = "ran callback"
-            st.rerun()
+        session_state = _raw_session_state()
 
-        st.checkbox("cb", on_change=callback)
+        # Pretend that the checkbox has a new state value
+        checkbox_state = WidgetStateProto()
+        checkbox_state.id = list(session_state._new_widget_state.keys())[0]
+        checkbox_state.bool_value = True
+        widget_states = WidgetStatesProto()
+        widget_states.widgets.append(checkbox_state)
 
-    at = AppTest.from_function(script).run()
-    at.checkbox[0].check().run()
-    assert at.session_state["message"] == "ran callback"
-    warning = at.warning[0]
-    assert "no-op" in warning.value
+        # Tell session_state to call our callbacks.
+        session_state.on_script_will_rerun(widget_states)
 
-
-def test_updates():
-    at = AppTest.from_file("test_data/linked_sliders.py").run()
-    assert at.slider.values == [-100.0, -148.0]
-    assert at.markdown.values == ["Celsius `-100.0`", "Fahrenheit `-148.0`"]
-
-    # Both sliders update when first is changed
-    at.slider[0].set_value(0.0).run()
-    assert at.slider.values == [0.0, 32.0]
-    assert at.markdown.values == ["Celsius `0.0`", "Fahrenheit `32.0`"]
-
-    # Both sliders update when second is changed
-    at.slider[1].set_value(212.0).run()
-    assert at.slider.values == [100.0, 212.0]
-    assert at.markdown.values == ["Celsius `100.0`", "Fahrenheit `212.0`"]
-
-    # Sliders update when one is changed repeatedly
-    at.slider[0].set_value(0.0).run()
-    assert at.slider.values == [0.0, 32.0]
-    at.slider[0].set_value(100.0).run()
-    assert at.slider.values == [100.0, 212.0]
-
-
-def test_serializable_check():
-    """When the config option is on, adding unserializable data to session
-    state should result in an exception.
-    """
-    with patch_config_options({"runner.enforceSerializableSessionState": True}):
-
-        def script():
-            import streamlit as st
-
-            def unserializable_data():
-                return lambda x: x
-
-            st.session_state.unserializable = unserializable_data()
-
-        at = AppTest.from_function(script).run()
-        assert at.exception
-        assert "pickle" in at.exception[0].value
-
-
-def test_serializable_check_off():
-    """When the config option is off, adding unserializable data to session
-    state should work without errors.
-    """
-    with patch_config_options({"runner.enforceSerializableSessionState": False}):
-
-        def script():
-            import streamlit as st
-
-            def unserializable_data():
-                return lambda x: x
-
-            st.session_state.unserializable = unserializable_data()
-
-        at = AppTest.from_function(script).run()
-        assert not at.exception
+        mock_on_checkbox_changed.assert_called_once()
+        patched_warning.assert_called_once()
 
 
 def check_roundtrip(widget_id: str, value: Any) -> None:
@@ -370,16 +316,12 @@ class SessionStateSerdeTest(DeltaGeneratorTestCase):
         )
         check_roundtrip("date_interval", date_interval)
 
-    @patch("streamlit.elements.widgets.file_uploader._get_upload_files")
-    def test_file_uploader_serde(self, get_upload_files_patch):
-        file_rec = UploadedFileRec("file1", "file1", "type", b"123")
-        uploaded_files = [
-            UploadedFile(
-                file_rec, FileURLsProto(file_id="1", delete_url="d1", upload_url="u1")
-            )
+    @patch("streamlit.elements.file_uploader._get_file_recs")
+    def test_file_uploader_serde(self, get_file_recs_patch):
+        file_recs = [
+            UploadedFileRec(1, "file1", "type", b"123"),
         ]
-
-        get_upload_files_patch.return_value = uploaded_files
+        get_file_recs_patch.return_value = file_recs
 
         uploaded_file = st.file_uploader("file_uploader", key="file_uploader")
         check_roundtrip("file_uploader", uploaded_file)
@@ -520,16 +462,16 @@ def _sorted_items(state: SessionState) -> List[Tuple[str, Any]]:
 
 class SessionStateMethodTests(unittest.TestCase):
     def setUp(self):
-        self.old_state = {"foo": "bar", "baz": "qux", "corge": "grault"}
-        self.new_session_state = {"foo": "bar2"}
+        old_state = {"foo": "bar", "baz": "qux", "corge": "grault"}
+        new_session_state = {"foo": "bar2"}
         new_widget_state = WStates(
             {
                 "baz": Value("qux2"),
-                f"{GENERATED_WIDGET_ID_PREFIX}-foo-None": Value("bar"),
+                f"{GENERATED_WIDGET_KEY_PREFIX}-foo-None": Value("bar"),
             },
         )
         self.session_state = SessionState(
-            self.old_state, self.new_session_state, new_widget_state
+            old_state, new_session_state, new_widget_state
         )
 
     def test_compact(self):
@@ -538,29 +480,14 @@ class SessionStateMethodTests(unittest.TestCase):
             "foo": "bar2",
             "baz": "qux2",
             "corge": "grault",
-            f"{GENERATED_WIDGET_ID_PREFIX}-foo-None": "bar",
+            f"{GENERATED_WIDGET_KEY_PREFIX}-foo-None": "bar",
         }
         assert self.session_state._new_session_state == {}
         assert self.session_state._new_widget_state == WStates()
 
-    # https://github.com/streamlit/streamlit/issues/7206
-    def test_ignore_key_error_within_compact_state(self):
-        wstates = WStates()
-
-        widget_state = WidgetStateProto()
-        widget_state.id = "widget_id_1"
-        widget_state.int_value = 5
-        wstates.set_widget_from_proto(widget_state)
-        session_state = SessionState(self.old_state, self.new_session_state, wstates)
-        # KeyError should be thrown from grabbing a key with no metadata
-        # but _compact_state catches it so no KeyError should be thrown
-        session_state._compact_state()
-        with pytest.raises(KeyError):
-            wstates["baz"]
-
     def test_clear_state(self):
         # Sanity test
-        keys = {"foo", "baz", "corge", f"{GENERATED_WIDGET_ID_PREFIX}-foo-None"}
+        keys = {"foo", "baz", "corge", f"{GENERATED_WIDGET_KEY_PREFIX}-foo-None"}
         self.assertEqual(keys, self.session_state._keys())
 
         # Clear state
@@ -580,7 +507,7 @@ class SessionStateMethodTests(unittest.TestCase):
         old_state = {"foo": "bar", "corge": "grault"}
         new_session_state = {}
         new_widget_state = WStates(
-            {f"{GENERATED_WIDGET_ID_PREFIX}-baz": Serialized(WidgetStateProto())},
+            {f"{GENERATED_WIDGET_KEY_PREFIX}-baz": Serialized(WidgetStateProto())},
         )
         self.session_state = SessionState(
             old_state, new_session_state, new_widget_state
@@ -648,8 +575,8 @@ class SessionStateMethodTests(unittest.TestCase):
         self.session_state._new_widget_state.set_from_value("foo", "bar")
         assert not self.session_state._widget_changed("foo")
 
-    def test_remove_stale_widgets(self):
-        generated_widget_key = f"{GENERATED_WIDGET_ID_PREFIX}-removed_widget"
+    def test_cull_nonexistent(self):
+        generated_widget_key = f"{GENERATED_WIDGET_KEY_PREFIX}-removed_widget"
 
         self.session_state._old_state = {
             "existing_widget": True,
@@ -660,7 +587,7 @@ class SessionStateMethodTests(unittest.TestCase):
         wstates = WStates()
         self.session_state._new_widget_state = wstates
 
-        self.session_state._remove_stale_widgets({"existing_widget"})
+        self.session_state._cull_nonexistent({"existing_widget"})
 
         assert self.session_state["existing_widget"] == True
         assert generated_widget_key not in self.session_state
@@ -675,7 +602,7 @@ class SessionStateMethodTests(unittest.TestCase):
         WIDGET_VALUE = 123
 
         metadata = WidgetMetadata(
-            id=f"{GENERATED_WIDGET_ID_PREFIX}-0-widget_id_1",
+            id=f"{GENERATED_WIDGET_KEY_PREFIX}-0-widget_id_1",
             deserializer=lambda _, __: WIDGET_VALUE,
             serializer=identity,
             value_type="int_value",
@@ -687,33 +614,18 @@ class SessionStateMethodTests(unittest.TestCase):
         assert not wsr.value_changed
         assert self.session_state["widget_id_1"] == WIDGET_VALUE
 
-    def test_detect_unserializable(self):
-        # Doesn't error when only serializable data is present
-        self.session_state._check_serializable()
-
-        def nested():
-            return lambda x: x
-
-        lam_func = nested()
-        self.session_state["unserializable"] = lam_func
-        with pytest.raises(Exception):
-            self.session_state._check_serializable()
-
 
 @given(state=stst.session_state())
-@settings(deadline=400)
 def test_compact_idempotent(state):
     assert _compact_copy(state) == _compact_copy(_compact_copy(state))
 
 
 @given(state=stst.session_state())
-@settings(deadline=400)
 def test_compact_len(state):
     assert len(state) >= len(_compact_copy(state))
 
 
 @given(state=stst.session_state())
-@settings(deadline=400)
 def test_compact_presence(state):
     assert _sorted_items(state) == _sorted_items(_compact_copy(state))
 
@@ -753,10 +665,10 @@ def test_map_set_del_3837_regression():
     to conveniently use the hypothesis `example` decorator."""
 
     meta1 = stst.mock_metadata(
-        "   $$GENERATED_WIDGET_ID-e3e70682-c209-4cac-629f-6fbed82c07cd-None", 0
+        "$$GENERATED_WIDGET_KEY-e3e70682-c209-4cac-629f-6fbed82c07cd-None", 0
     )
     meta2 = stst.mock_metadata(
-        "$$GENERATED_WIDGET_ID-f728b4fa-4248-5e3a-0a5d-2f346baa9455-0", 0
+        "$$GENERATED_WIDGET_KEY-f728b4fa-4248-5e3a-0a5d-2f346baa9455-0", 0
     )
     m = SessionState()
     m["0"] = 0

@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +13,10 @@
 # limitations under the License.
 
 import asyncio
-import gc
 import threading
 import unittest
 from asyncio import AbstractEventLoop
 from typing import Any, Callable, List, Optional, cast
-from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,17 +25,12 @@ import streamlit.runtime.app_session as app_session
 from streamlit import config
 from streamlit.proto.AppPage_pb2 import AppPage
 from streamlit.proto.BackMsg_pb2 import BackMsg
-from streamlit.proto.Common_pb2 import FileURLs, FileURLsRequest, FileURLsResponse
 from streamlit.proto.ForwardMsg_pb2 import ForwardMsg
 from streamlit.runtime import Runtime
 from streamlit.runtime.app_session import AppSession, AppSessionState
-from streamlit.runtime.caching.storage.dummy_cache_storage import (
-    MemoryCacheStorageManager,
-)
 from streamlit.runtime.forward_msg_queue import ForwardMsgQueue
 from streamlit.runtime.media_file_manager import MediaFileManager
 from streamlit.runtime.memory_media_file_storage import MemoryMediaFileStorage
-from streamlit.runtime.script_data import ScriptData
 from streamlit.runtime.scriptrunner import (
     RerunData,
     ScriptRunContext,
@@ -46,12 +39,11 @@ from streamlit.runtime.scriptrunner import (
     add_script_run_ctx,
     get_script_run_ctx,
 )
+from streamlit.runtime.session_data import SessionData
 from streamlit.runtime.state import SessionState
-from streamlit.runtime.uploaded_file_manager import (
-    UploadedFileManager,
-    UploadFileUrlInfo,
-)
+from streamlit.runtime.uploaded_file_manager import UploadedFileManager
 from streamlit.watcher.local_sources_watcher import LocalSourcesWatcher
+from tests.isolated_asyncio_test_case import IsolatedAsyncioTestCase
 from tests.testutil import patch_config_options
 
 
@@ -60,10 +52,7 @@ def del_path(monkeypatch):
     monkeypatch.setenv("PATH", "")
 
 
-def _create_test_session(
-    event_loop: Optional[AbstractEventLoop] = None,
-    session_id_override: Optional[str] = None,
-) -> AppSession:
+def _create_test_session(event_loop: Optional[AbstractEventLoop] = None) -> AppSession:
     """Create an AppSession instance with some default mocked data."""
     if event_loop is None:
         event_loop = MagicMock()
@@ -73,13 +62,11 @@ def _create_test_session(
         return_value=event_loop,
     ):
         return AppSession(
-            script_data=ScriptData("/fake/script_path.py", is_hello=False),
+            session_data=SessionData("/fake/script_path.py", "fake_command_line"),
             uploaded_file_manager=MagicMock(),
-            script_cache=MagicMock(),
             message_enqueued_callback=None,
             local_sources_watcher=MagicMock(),
             user_info={"email": "test@test.com"},
-            session_id_override=session_id_override,
         )
 
 
@@ -94,7 +81,6 @@ class AppSessionTest(unittest.TestCase):
         mock_runtime.media_file_mgr = MediaFileManager(
             MemoryMediaFileStorage("/mock/media")
         )
-        mock_runtime.cache_storage_manager = MemoryCacheStorageManager()
         Runtime._instance = mock_runtime
 
     def tearDown(self) -> None:
@@ -102,20 +88,7 @@ class AppSessionTest(unittest.TestCase):
         Runtime._instance = None
 
     @patch(
-        "streamlit.runtime.app_session.uuid.uuid4", MagicMock(return_value="some_uuid")
-    )
-    def test_generates_uuid_for_session_id_if_no_override(self):
-        session = _create_test_session()
-
-        assert session.id == "some_uuid"
-
-    def test_uses_session_id_override_if_set(self):
-        session = _create_test_session(session_id_override="some_custom_session_id")
-
-        assert session.id == "some_custom_session_id"
-
-    @patch(
-        "streamlit.runtime.app_session.secrets_singleton.file_change_listener.disconnect"
+        "streamlit.runtime.app_session.secrets_singleton._file_change_listener.disconnect"
     )
     def test_shutdown(self, patched_disconnect):
         """Test that AppSession.shutdown behaves sanely."""
@@ -132,7 +105,6 @@ class AppSessionTest(unittest.TestCase):
         # A 2nd shutdown call should have no effect.
         session.shutdown()
         self.assertEqual(AppSessionState.SHUTDOWN_REQUESTED, session._state)
-
         mock_file_mgr.remove_session_files.assert_called_once_with(session.id)
 
     def test_shutdown_with_running_scriptrunner(self):
@@ -146,28 +118,9 @@ class AppSessionTest(unittest.TestCase):
 
         mock_scriptrunner.reset_mock()
 
-        # A 2nd shutdown call should have no effect.
+        # A 2nd shutdown call should have no affect.
         session.shutdown()
         mock_scriptrunner.request_stop.assert_not_called()
-
-    def test_request_script_stop(self):
-        """Verify that request_script_stop forwards the request to the scriptrunner."""
-        session = _create_test_session()
-        mock_scriptrunner = MagicMock(spec=ScriptRunner)
-        session._scriptrunner = mock_scriptrunner
-
-        session.request_script_stop()
-        mock_scriptrunner.request_stop.assert_called()
-
-    def test_request_script_stop_no_scriptrunner(self):
-        """Test that calling request_script_stop when there is no scriptrunner doesn't
-        result in an error.
-        """
-        session = _create_test_session()
-        session._scriptrunner = None
-
-        # Nothing else to do here aside from ensuring that no exception is thrown.
-        session.request_script_stop()
 
     def test_unique_id(self):
         """Each AppSession should have a unique ID"""
@@ -186,19 +139,19 @@ class AppSessionTest(unittest.TestCase):
         self.assertTrue("foo" not in session._session_state)
 
     @patch("streamlit.runtime.legacy_caching.clear_cache")
-    @patch("streamlit.runtime.caching.cache_data.clear")
-    @patch("streamlit.runtime.caching.cache_resource.clear")
+    @patch("streamlit.runtime.caching.memo.clear")
+    @patch("streamlit.runtime.caching.singleton.clear")
     def test_clear_cache_all_caches(
-        self, clear_resource_caches, clear_data_caches, clear_legacy_cache
+        self, clear_singleton_cache, clear_memo_cache, clear_legacy_cache
     ):
         session = _create_test_session()
         session._handle_clear_cache_request()
-        clear_resource_caches.assert_called_once()
-        clear_data_caches.assert_called_once()
+        clear_singleton_cache.assert_called_once()
+        clear_memo_cache.assert_called_once()
         clear_legacy_cache.assert_called_once()
 
     @patch(
-        "streamlit.runtime.app_session.secrets_singleton.file_change_listener.connect"
+        "streamlit.runtime.app_session.secrets_singleton._file_change_listener.connect"
     )
     def test_request_rerun_on_secrets_file_change(self, patched_connect):
         """AppSession should add a secrets listener on creation."""
@@ -282,10 +235,10 @@ class AppSessionTest(unittest.TestCase):
         # Assert that the ScriptRunner constructor was called.
         mock_scriptrunner.assert_called_once_with(
             session_id=session.id,
-            main_script_path=session._script_data.main_script_path,
+            main_script_path=session._session_data.main_script_path,
+            client_state=session._client_state,
             session_state=session._session_state,
             uploaded_file_mgr=session._uploaded_file_mgr,
-            script_cache=session._script_cache,
             initial_rerun_data=RerunData(),
             user_info={"email": "test@test.com"},
         )
@@ -350,32 +303,12 @@ class AppSessionTest(unittest.TestCase):
 
             self.assertIsNone(session._debug_last_backmsg_id)
 
-    @patch("streamlit.runtime.app_session.ScriptRunner", MagicMock(spec=ScriptRunner))
-    @patch("streamlit.runtime.app_session.AppSession._enqueue_forward_msg", MagicMock())
-    def test_sets_state_to_not_running_on_rerun_event(self):
-        session = _create_test_session()
-        session._create_scriptrunner(initial_rerun_data=RerunData())
-        session._state = AppSessionState.APP_IS_RUNNING
-
-        with patch(
-            "streamlit.runtime.app_session.asyncio.get_running_loop",
-            return_value=session._event_loop,
-        ):
-            session._handle_scriptrunner_event_on_event_loop(
-                sender=session._scriptrunner,
-                event=ScriptRunnerEvent.SCRIPT_STOPPED_FOR_RERUN,
-                forward_msg=ForwardMsg(),
-            )
-
-            self.assertEqual(session._state, AppSessionState.APP_NOT_RUNNING)
-
     def test_passes_client_state_on_run_on_save(self):
         session = _create_test_session()
         session._run_on_save = True
         session.request_rerun = MagicMock()
         session._on_source_file_changed()
 
-        session._script_cache.clear.assert_called_once()
         session.request_rerun.assert_called_once_with(session._client_state)
 
     @patch(
@@ -387,9 +320,6 @@ class AppSessionTest(unittest.TestCase):
         session._run_on_save = True
         session.request_rerun = MagicMock()
         session._on_source_file_changed("/fake/script_path.py")
-
-        # Clearing the cache should still have been called
-        session._script_cache.clear.assert_called_once()
 
         self.assertEqual(session.request_rerun.called, False)
 
@@ -441,134 +371,6 @@ class AppSessionTest(unittest.TestCase):
         session._enqueue_forward_msg(msg)
 
         self.assertEqual(msg.debug_last_backmsg_id, "some backmsg id")
-
-    @patch("streamlit.runtime.app_session.config.on_config_parsed")
-    @patch("streamlit.runtime.app_session.source_util.register_pages_changed_callback")
-    @patch(
-        "streamlit.runtime.app_session.secrets_singleton.file_change_listener.connect"
-    )
-    def test_registers_file_watchers(
-        self,
-        patched_secrets_connect,
-        patched_register_pages_changed_callback,
-        patched_on_config_parsed,
-    ):
-        session = _create_test_session()
-
-        session._local_sources_watcher.register_file_change_callback.assert_called_once_with(
-            session._on_source_file_changed
-        )
-        patched_on_config_parsed.assert_called_once_with(
-            session._on_source_file_changed, force_connect=True
-        )
-        patched_register_pages_changed_callback.assert_called_once_with(
-            session._on_pages_changed
-        )
-        patched_secrets_connect.assert_called_once_with(
-            session._on_secrets_file_changed
-        )
-
-    def test_recreates_local_sources_watcher_if_none(self):
-        session = _create_test_session()
-        session._local_sources_watcher = None
-
-        session.register_file_watchers()
-        self.assertIsNotNone(session._local_sources_watcher)
-
-    @patch(
-        "streamlit.runtime.app_session.secrets_singleton.file_change_listener.disconnect"
-    )
-    def test_disconnect_file_watchers(self, patched_secrets_disconnect):
-        session = _create_test_session()
-
-        with patch.object(
-            session._local_sources_watcher, "close"
-        ) as patched_close_local_sources_watcher, patch.object(
-            session, "_stop_config_listener"
-        ) as patched_stop_config_listener, patch.object(
-            session, "_stop_pages_listener"
-        ) as patched_stop_pages_listener:
-            session.disconnect_file_watchers()
-
-            patched_close_local_sources_watcher.assert_called_once()
-            patched_stop_config_listener.assert_called_once()
-            patched_stop_pages_listener.assert_called_once()
-            patched_secrets_disconnect.assert_called_once_with(
-                session._on_secrets_file_changed
-            )
-
-            self.assertIsNone(session._local_sources_watcher)
-            self.assertIsNone(session._stop_config_listener)
-            self.assertIsNone(session._stop_pages_listener)
-
-    def test_disconnect_file_watchers_removes_refs(self):
-        """Test that calling disconnect_file_watchers on the AppSession
-        removes references to it so it is eligible to be garbage collected after the
-        method is called.
-        """
-        session = _create_test_session()
-
-        # Various listeners should have references to session file/pages/secrets changed
-        # handlers.
-        self.assertGreater(len(gc.get_referrers(session)), 0)
-
-        session.disconnect_file_watchers()
-        # Ensure that we don't count refs to session from an object that would have been
-        # garbage collected along with it.
-        gc.collect(2)
-
-        self.assertEqual(len(gc.get_referrers(session)), 0)
-
-    @patch("streamlit.runtime.app_session.AppSession._enqueue_forward_msg")
-    def test_handle_file_urls_request(self, mock_enqueue):
-        session = _create_test_session()
-
-        upload_file_urls = [
-            UploadFileUrlInfo(
-                file_id="file_1",
-                upload_url="upload_file_url_1",
-                delete_url="delete_file_url_1",
-            ),
-            UploadFileUrlInfo(
-                file_id="file_2",
-                upload_url="upload_file_url_2",
-                delete_url="delete_file_url_2",
-            ),
-            UploadFileUrlInfo(
-                file_id="file_3",
-                upload_url="upload_file_url_3",
-                delete_url="delete_file_url_3",
-            ),
-        ]
-        session._uploaded_file_mgr.get_upload_urls.return_value = upload_file_urls
-
-        session._handle_file_urls_request(
-            FileURLsRequest(
-                request_id="my_id",
-                file_names=["file_1", "file_2", "file_3"],
-                session_id=session.id,
-            )
-        )
-
-        session._uploaded_file_mgr.get_upload_urls.assert_called_once_with(
-            session.id, ["file_1", "file_2", "file_3"]
-        )
-
-        expected_msg = ForwardMsg(
-            file_urls_response=FileURLsResponse(
-                response_id="my_id",
-                file_urls=[
-                    FileURLs(
-                        file_id=url.file_id,
-                        upload_url=url.upload_url,
-                        delete_url=url.delete_url,
-                    )
-                    for url in upload_file_urls
-                ],
-            )
-        )
-
-        mock_enqueue.assert_called_once_with(expected_msg)
 
 
 def _mock_get_options_for_section(overrides=None) -> Callable[..., Any]:
@@ -622,11 +424,10 @@ class AppSessionScriptEventTest(IsolatedAsyncioTestCase):
         orig_ctx = get_script_run_ctx()
         ctx = ScriptRunContext(
             session_id="TestSessionID",
-            _enqueue=session._enqueue_forward_msg,
+            _enqueue=session._session_data.enqueue,
             query_string="",
             session_state=MagicMock(),
             uploaded_file_mgr=MagicMock(),
-            main_script_path="",
             page_script_hash="",
             user_info={"email": "test@test.com"},
         )
@@ -645,7 +446,7 @@ class AppSessionScriptEventTest(IsolatedAsyncioTestCase):
         # Yield to let the AppSession's callbacks run.
         await asyncio.sleep(0)
 
-        sent_messages = session._browser_queue._queue
+        sent_messages = session._session_data._browser_queue._queue
         self.assertEqual(2, len(sent_messages))  # NewApp and SessionState messages
 
         # Note that we're purposefully not very thoroughly testing new_session
@@ -749,7 +550,7 @@ class AppSessionScriptEventTest(IsolatedAsyncioTestCase):
             side_effect=lambda: forward_msg_queue_events.append(CLEAR_QUEUE)
         )
 
-        session._browser_queue = mock_queue
+        session._session_data._browser_queue = mock_queue
 
         # Create an exception and have the session handle it.
         FAKE_EXCEPTION = RuntimeError("I am error")
@@ -774,7 +575,7 @@ class AppSessionScriptEventTest(IsolatedAsyncioTestCase):
                     ),
                     CLEAR_QUEUE,
                     session._create_new_session_message(page_script_hash=""),
-                    session._create_session_status_changed_message(),
+                    session._create_session_state_changed_message(),
                 ]
             )
 
@@ -784,7 +585,7 @@ class AppSessionScriptEventTest(IsolatedAsyncioTestCase):
                     session._create_script_finished_message(
                         ForwardMsg.FINISHED_SUCCESSFULLY
                     ),
-                    session._create_session_status_changed_message(),
+                    session._create_session_state_changed_message(),
                     session._create_exception_message(FAKE_EXCEPTION),
                 ]
             )
@@ -802,6 +603,7 @@ class AppSessionScriptEventTest(IsolatedAsyncioTestCase):
         ) as handle_backmsg_exception, patch.object(
             session, "_handle_clear_cache_request"
         ) as handle_clear_cache_request:
+
             error = Exception("explode!")
             handle_clear_cache_request.side_effect = error
 
@@ -820,22 +622,6 @@ class AppSessionScriptEventTest(IsolatedAsyncioTestCase):
         )
         session.handle_backmsg(msg)
         self.assertEqual(session._debug_last_backmsg_id, "some backmsg")
-
-    @patch("streamlit.runtime.app_session._LOGGER")
-    async def test_handles_app_heartbeat_backmsg(self, patched_logger):
-        session = _create_test_session(asyncio.get_running_loop())
-        with patch.object(
-            session, "handle_backmsg_exception"
-        ) as handle_backmsg_exception, patch.object(
-            session, "_handle_app_heartbeat_request"
-        ) as handle_app_heartbeat_request:
-            msg = BackMsg()
-            msg.app_heartbeat = True
-            session.handle_backmsg(msg)
-
-            handle_app_heartbeat_request.assert_called_once()
-            handle_backmsg_exception.assert_not_called()
-            patched_logger.warning.assert_not_called()
 
 
 class PopulateCustomThemeMsgTest(unittest.TestCase):
@@ -896,7 +682,7 @@ class PopulateCustomThemeMsgTest(unittest.TestCase):
         self.assertEqual(new_session_msg.custom_theme.primary_color, "coral")
         self.assertEqual(new_session_msg.custom_theme.background_color, "white")
 
-    @patch("streamlit.runtime.app_session._LOGGER")
+    @patch("streamlit.runtime.app_session.LOGGER")
     @patch("streamlit.runtime.app_session.config")
     def test_logs_warning_if_base_invalid(self, patched_config, patched_logger):
         patched_config.get_options_for_section.side_effect = (
@@ -912,7 +698,7 @@ class PopulateCustomThemeMsgTest(unittest.TestCase):
             " Allowed values include ['light', 'dark']. Setting theme.base to \"light\"."
         )
 
-    @patch("streamlit.runtime.app_session._LOGGER")
+    @patch("streamlit.runtime.app_session.LOGGER")
     @patch("streamlit.runtime.app_session.config")
     def test_logs_warning_if_font_invalid(self, patched_config, patched_logger):
         patched_config.get_options_for_section.side_effect = (

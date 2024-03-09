@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,15 +27,5 @@ describe("st.json", () => {
 
   it("displays collapsed json", () => {
     cy.getIndexed("[data-testid='stJson']", 1).should("contain", "...");
-  });
-
-  it("preserves multiple white spaces", () => {
-    cy.getIndexed("[data-testid='stJson']", 2)
-      .should("contain", "Hello     World")
-      .and("contain", "Foo    Bar");
-  });
-
-  it('matches snapshot', () => {
-    cy.getIndexed("[data-testid='stJson']", 2).matchThemedSnapshots("json-white-spaces")
   });
 });

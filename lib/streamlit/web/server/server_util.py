@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,17 +14,9 @@
 
 """Server related utility functions"""
 
-from __future__ import annotations
-
-from typing import Final
-from urllib.parse import urljoin
-
-import tornado.web
+from typing import Optional
 
 from streamlit import config, net_util, url_util
-
-# The port reserved for internal development.
-DEVELOPMENT_PORT: Final = 3000
 
 
 def is_url_from_allowed_origins(url: str) -> bool:
@@ -69,7 +61,7 @@ def is_url_from_allowed_origins(url: str) -> bool:
     return False
 
 
-def _get_server_address_if_manually_set() -> str | None:
+def _get_server_address_if_manually_set() -> Optional[str]:
     if config.is_manually_set("browser.serverAddress"):
         return url_util.get_hostname(config.get_option("browser.serverAddress"))
     return None
@@ -95,8 +87,6 @@ def get_url(host_ip: str) -> str:
     str
         The URL.
     """
-    protocol = "https" if config.get_option("server.sslCertFile") else "http"
-
     port = _get_browser_address_bar_port()
     base_path = config.get_option("server.baseUrlPath").strip("/")
 
@@ -104,7 +94,8 @@ def get_url(host_ip: str) -> str:
         base_path = "/" + base_path
 
     host_ip = host_ip.strip("/")
-    return f"{protocol}://{host_ip}:{port}{base_path}"
+
+    return f"http://{host_ip}:{port}{base_path}"
 
 
 def _get_browser_address_bar_port() -> int:
@@ -116,16 +107,5 @@ def _get_browser_address_bar_port() -> int:
 
     """
     if config.get_option("global.developmentMode"):
-        return DEVELOPMENT_PORT
+        return 3000
     return int(config.get_option("browser.serverPort"))
-
-
-def emit_endpoint_deprecation_notice(
-    handler: tornado.web.RequestHandler, new_path: str
-) -> None:
-    """
-    Emits the warning about deprecation of HTTP endpoint in the HTTP header.
-    """
-    handler.set_header("Deprecation", True)
-    new_url = urljoin(f"{handler.request.protocol}://{handler.request.host}", new_path)
-    handler.set_header("Link", f'<{new_url}>; rel="alternate"')

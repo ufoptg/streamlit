@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,38 +32,30 @@ LICENSE_TEXT = (SCRIPT_DIR / "license-template.txt").read_text().splitlines()[0]
 
 IGNORE_PATTERN = re.compile(
     # Exclude CI files.
-    r"^\.(github)/"
+    r"^\.(github|circleci)/"
     # Exclude images.
-    r"|\.(?:png|jpg|jpeg|gif|ttf|woff|otf|eot|woff2|ico|svg)$"
-    # Exclude videos we use for testing st.video.
-    r"|e2e_playwright/test_assets/.*\.(mp4|webm)$"
-    # Exclude subtitle files we use for testing st.video.
-    r"|e2e_playwright/test_assets/.*\.(vtt|srt)$"
+    r"|\.(?:png|gif|ttf|woff|otf|eot|woff2|ico|svg)$"
     # Exclude files, because they make it obvious which product they relate to.
-    r"|(LICENSE|NOTICES|CODE_OF_CONDUCT\.md|README\.md|CONTRIBUTING\.md|SECURITY.md)$"
+    r"|(LICENSE|NOTICES|CODE_OF_CONDUCT\.md|README\.md|CONTRIBUTING\.md)$"
     # Exclude files, because they do not support comments
     r"|\.(json|prettierrc|nvmrc)$"
     # Exclude generated files, because they don't have any degree of creativity.
     r"|yarn\.lock$"
-    # Exclude pytest config files, because they don't have any degree of creativity.
-    r"|pytest\.ini$"
     # Exclude empty files, because they don't have any degree of creativity.
     r"|py\.typed$"
     # Exclude dev-tools configuration files, because they don't have any
     # degree of creativity.
     r"|^(\.dockerignore|\.editorconfig|\.gitignore|\.gitmodules)$"
-    r"|^frontend/(\.dockerignore|\.eslintrc.js|\.prettierignore)$"
-    r"|^lib/(\.coveragerc|\.dockerignore|MANIFEST\.in|mypy\.ini)$"
-    r"|^lib/(test|dev)-requirements\.txt$"
-    r"|^lib/min-constraints-gen\.txt"
+    r"|^frontend/(\.dockerignore|\.eslintrc|\.prettierignore)$"
+    r"|^lib/(\.coveragerc|\.dockerignore|MANIFEST\.in|mypy\.ini|pytest\.ini)$"
+    r"|^lib/(test-requirements-with-tensorflow\.txt|test-requirements\.txt)$"
     r"|\.isort\.cfg$"
-    r"|\.credentials/\.gitignore$"
     # Excluding test files, because adding headers may cause tests to fail.
-    r"|/(fixtures|__snapshots__|test_data|data)/"
+    r"|/(fixtures|__snapshots__|vendor|test_data|data)/"
     # Exclude vendored files.
-    r"|/vendor/|^vendor/|^component-lib/declarations/apache-arrow"
+    r"|/vendor/|^component-lib/declarations/apache-arrow"
     r"|proto/streamlit/proto/openmetrics_data_model\.proto"
-    r"|^e2e_flaky/scripts/.*\.py",
+    r"|lib/tests/isolated_asyncio_test_case\.py",
     re.IGNORECASE,
 )
 

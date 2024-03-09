@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,37 +54,3 @@ with st.container():
     st.markdown("# some really long header " + " ".join(["lol"] * 10))
     np.random.seed(0)
     st.table(np.random.randn(10, 20))
-
-with st.container():
-    st.title("Some title")
-    st.markdown("Some text")
-
-    st.markdown(
-        """
-    # Some title
-    Some text
-    """
-    )
-
-    st.title(
-        """
-    Some title
-    Some text
-    """
-    )
-
-    st.markdown("# Some title")
-    st.markdown("Some text")
-
-st.markdown(
-    """
-- :blue[blue]
-- :green[green]
-- :red[red]
-- :violet[violet]
-- :orange[orange]
-- :gray[gray]
-- :grey[grey]
-- :rainbow[rainbow]
-"""
-)

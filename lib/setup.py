@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,45 +16,43 @@ import os
 import sys
 from pathlib import Path
 
-from setuptools import find_packages, setup
+import setuptools
 from setuptools.command.install import install
 
 THIS_DIRECTORY = Path(__file__).parent
 
-VERSION = "1.32.0"  # PEP-440
+VERSION = "1.15.2"  # PEP-440
+
+NAME = "streamlit"
 
 # IMPORTANT: We should try very hard *not* to add dependencies to Streamlit.
-# And if you do add one, make the required version as general as possible:
-# - Include relevant lower bound for any features we use from our dependencies
-# - Always include the lower bound as >= VERSION, to keep testing min versions easy
-# - And include an upper bound that's < NEXT_MAJOR_VERSION
+# And if you do add one, make the required version as general as possible.
+# But include relevant lower bounds for any features we use from our dependencies.
 INSTALL_REQUIRES = [
-    "altair>=4.0, <6",
-    "blinker>=1.0.0, <2",
-    "cachetools>=4.0, <6",
-    "click>=7.0, <9",
-    "numpy>=1.19.3, <2",
-    "packaging>=16.8, <24",
-    # Lowest version with available wheel for 3.7 + amd64 + linux
-    "pandas>=1.3.0, <3",
-    "pillow>=7.1.0, <11",
-    # Python protobuf 4.21 (the first 4.x version) is compatible with protobufs
-    # generated from `protoc` >= 3.20. (`protoc` is installed separately from the Python
-    # protobuf package, so this pin doesn't actually enforce a `protoc` minimum version.
-    # Instead, the `protoc` min version is enforced in our Makefile.)
-    "protobuf>=3.20, <5",
-    # pyarrow is not semantically versioned, gets new major versions frequently, and
-    # doesn't tend to break the API on major version upgrades, so we don't put an
-    # upper bound on it.
-    "pyarrow>=7.0",
-    "requests>=2.27, <3",
-    "rich>=10.14.0, <14",
-    "tenacity>=8.1.0, <9",
-    "toml>=0.10.1, <2",
-    "typing-extensions>=4.3.0, <5",
+    "altair>=3.2.0",
+    "blinker>=1.0.0",
+    "cachetools>=4.0",
+    "click>=7.0",
+    # 1.4 introduced the functionality found in python 3.8's importlib.metadata module
+    "importlib-metadata>=1.4",
+    "numpy",
+    "packaging>=14.1",
+    "pandas>=0.21.0",
+    "pillow>=6.2.0",
+    "protobuf<4,>=3.12",
+    "pyarrow>=4.0",
+    "pympler>=0.9",
+    "python-dateutil",
+    "requests>=2.4",
+    "rich>=10.11.0",
+    "semver",
+    "toml",
+    "typing-extensions>=3.10.0.0",
+    "tzlocal>=1.1",
+    "validators>=0.2",
     # Don't require watchdog on MacOS, since it'll fail without xcode tools.
     # Without watchdog, we fallback to a polling file watcher to check for app changes.
-    "watchdog>=2.1.5; platform_system != 'Darwin'",
+    "watchdog; platform_system != 'Darwin'",
 ]
 
 # We want to exclude some dependencies in our internal Snowpark conda distribution of
@@ -62,22 +60,14 @@ INSTALL_REQUIRES = [
 # and PyPI builds (that is, for people installing streamlit using either
 # `pip install streamlit` or `conda install -c conda-forge streamlit`)
 SNOWPARK_CONDA_EXCLUDED_DEPENDENCIES = [
-    "gitpython>=3.0.7, <4, !=3.1.19",
-    "pydeck>=0.8.0b4, <1",
-    # Tornado 6.0.3 was the current Tornado version when Python 3.8, our earliest supported Python version,
-    # was released (Oct 14, 2019).
-    "tornado>=6.0.3, <7",
+    "gitpython!=3.1.19",
+    "pydeck>=0.1.dev5",
+    # 5.0 has a fix for etag header: https://github.com/tornadoweb/tornado/issues/2262
+    "tornado>=5.0",
 ]
 
 if not os.getenv("SNOWPARK_CONDA_BUILD"):
     INSTALL_REQUIRES.extend(SNOWPARK_CONDA_EXCLUDED_DEPENDENCIES)
-
-EXTRA_REQUIRES = {
-    "snowflake": [
-        "snowflake-snowpark-python>=0.9.0; python_version=='3.8'",
-        "snowflake-connector-python>=2.8.0; python_version=='3.8'",
-    ]
-}
 
 
 class VerifyVersionCommand(install):
@@ -105,10 +95,10 @@ else:
     # being missing isn't problematic.
     long_description = ""
 
-setup(
-    name="streamlit",
+setuptools.setup(
+    name=NAME,
     version=VERSION,
-    description="A faster way to build and share data apps",
+    description="The fastest way to build data apps in Python",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://streamlit.io",
@@ -130,11 +120,10 @@ setup(
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
         "Topic :: Database :: Front-Ends",
         "Topic :: Office/Business :: Financial :: Spreadsheet",
         "Topic :: Scientific/Engineering :: Information Analysis",
@@ -145,13 +134,12 @@ setup(
     # We exclude Python 3.9.7 from our compatible versions due to a bug in that version
     # with typing.Protocol. See https://github.com/streamlit/streamlit/issues/5140 and
     # https://bugs.python.org/issue45121
-    python_requires=">=3.8, !=3.9.7",
+    python_requires=">=3.7, !=3.9.7",
     # PEP 561: https://mypy.readthedocs.io/en/stable/installed_packages.html
     package_data={"streamlit": ["py.typed", "hello/**/*.py"]},
-    packages=find_packages(exclude=["tests", "tests.*"]),
+    packages=setuptools.find_packages(exclude=["tests", "tests.*"]),
     # Requirements
     install_requires=INSTALL_REQUIRES,
-    extras_require=EXTRA_REQUIRES,
     zip_safe=False,  # install source files not egg
     include_package_data=True,  # copy html and friends
     entry_points={"console_scripts": ["streamlit = streamlit.web.cli:main"]},

@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 import unittest
 from unittest.mock import patch
 
@@ -23,22 +24,30 @@ from streamlit.git_util import GITHUB_HTTP_URL, GITHUB_SSH_URL, GitRepo
 class GitUtilTest(unittest.TestCase):
     def test_https_url_check(self):
         # standard https url with and without .git
-        self.assertRegex("https://github.com/username/repo.git", GITHUB_HTTP_URL)
-        self.assertRegex("https://github.com/username/repo", GITHUB_HTTP_URL)
+        self.assertTrue(
+            re.search(GITHUB_HTTP_URL, "https://github.com/username/repo.git")
+        )
+        self.assertTrue(re.search(GITHUB_HTTP_URL, "https://github.com/username/repo"))
 
         # with www with and without .git
-        self.assertRegex("https://www.github.com/username/repo.git", GITHUB_HTTP_URL)
-        self.assertRegex("https://www.github.com/username/repo", GITHUB_HTTP_URL)
+        self.assertTrue(
+            re.search(GITHUB_HTTP_URL, "https://www.github.com/username/repo.git")
+        )
+        self.assertTrue(
+            re.search(GITHUB_HTTP_URL, "https://www.github.com/username/repo")
+        )
 
         # not http
-        self.assertNotRegex("http://www.github.com/username/repo.git", GITHUB_HTTP_URL)
+        self.assertFalse(
+            re.search(GITHUB_HTTP_URL, "http://www.github.com/username/repo.git")
+        )
 
     def test_ssh_url_check(self):
         # standard ssh url
-        self.assertRegex("git@github.com:username/repo.git", GITHUB_SSH_URL)
+        self.assertTrue(re.search(GITHUB_SSH_URL, "git@github.com:username/repo.git"))
 
         # no .git
-        self.assertRegex("git@github.com:username/repo", GITHUB_SSH_URL)
+        self.assertTrue(re.search(GITHUB_SSH_URL, "git@github.com:username/repo"))
 
     def test_git_repo_invalid(self):
         with patch("git.Repo") as mock:

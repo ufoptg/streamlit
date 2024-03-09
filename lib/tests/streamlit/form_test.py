@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -179,7 +179,7 @@ class FormMarshallingTest(DeltaGeneratorTestCase):
         form_proto = self.get_delta_from_queue(0).add_block
         self.assertEqual("foo", form_proto.form.form_id)
         self.assertEqual(True, form_proto.form.clear_on_submit)
-        self.assertEqual(True, form_proto.form.border)
+
         self.clear_queue()
 
         # Test with clear_on_submit=False
@@ -190,17 +190,6 @@ class FormMarshallingTest(DeltaGeneratorTestCase):
         form_proto = self.get_delta_from_queue(0).add_block
         self.assertEqual("bar", form_proto.form.form_id)
         self.assertEqual(False, form_proto.form.clear_on_submit)
-
-    def test_form_without_border(self):
-        """Test that a form can be created without a border."""
-
-        # Test with clear_on_submit=True
-        with st.form(key="foo", clear_on_submit=True, border=False):
-            pass
-
-        self.assertEqual(len(self.get_all_deltas_from_queue()), 1)
-        form_proto = self.get_delta_from_queue(0).add_block
-        self.assertEqual(False, form_proto.form.border)
 
     def test_multiple_forms_same_key(self):
         """Multiple forms with the same key are not allowed."""
@@ -311,31 +300,13 @@ class FormSubmitButtonTest(DeltaGeneratorTestCase):
         last_delta = self.get_delta_from_queue()
         self.assertEqual("primary", last_delta.new_element.button.type)
 
-    def test_submit_button_can_use_container_width_by_default(self):
-        """Test that a submit button can be called with use_container_width=True."""
-
-        form = st.form("foo")
-        form.form_submit_button(type="primary", use_container_width=True)
-
-        last_delta = self.get_delta_from_queue()
-        self.assertTrue(last_delta.new_element.button.use_container_width)
-
-    def test_submit_button_does_not_use_container_width_by_default(self):
-        """Test that a submit button does not use_use_container width by default."""
-
-        form = st.form("foo")
-        form.form_submit_button(type="primary")
-
-        last_delta = self.get_delta_from_queue()
-        self.assertFalse(last_delta.new_element.button.use_container_width)
-
     def test_return_false_when_not_submitted(self):
         with st.form("form1"):
             submitted = st.form_submit_button("Submit")
             self.assertEqual(submitted, False)
 
     @patch(
-        "streamlit.elements.widgets.button.register_widget",
+        "streamlit.elements.button.register_widget",
         MagicMock(return_value=RegisterWidgetResult(True, False)),
     )
     def test_return_true_when_submitted(self):

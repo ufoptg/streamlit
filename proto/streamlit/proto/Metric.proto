@@ -1,5 +1,5 @@
 /**!
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,6 @@
 
 syntax = "proto3";
 
-option java_package = "com.snowflake.apps.streamlit";
-option java_outer_classname = "MetricProto";
-
-import "streamlit/proto/LabelVisibilityMessage.proto";
-
 message Metric {
   string label = 1;
   string body = 2;
@@ -28,7 +23,6 @@ message Metric {
   MetricDirection direction = 4;
   MetricColor color = 5;
   string help = 6;
-  LabelVisibilityMessage label_visibility = 7;
 
   enum MetricColor{
     RED = 0;

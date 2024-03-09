@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,6 @@ from streamlit.runtime.forward_msg_queue import ForwardMsgQueue
 from streamlit.runtime.legacy_caching import caching
 from streamlit.runtime.media_file_manager import MediaFileManager
 from streamlit.runtime.memory_media_file_storage import MemoryMediaFileStorage
-from streamlit.runtime.memory_uploaded_file_manager import MemoryUploadedFileManager
 from streamlit.runtime.scriptrunner import (
     RerunData,
     RerunException,
@@ -44,13 +43,13 @@ from streamlit.runtime.scriptrunner import (
     ScriptRunnerEvent,
     StopException,
 )
-from streamlit.runtime.scriptrunner.script_cache import ScriptCache
 from streamlit.runtime.scriptrunner.script_requests import (
     ScriptRequest,
     ScriptRequests,
     ScriptRequestType,
 )
 from streamlit.runtime.state.session_state import SessionState
+from streamlit.runtime.uploaded_file_manager import UploadedFileManager
 from tests import testutil
 
 text_utf = "complete! 👨‍🎤"
@@ -551,58 +550,83 @@ class ScriptRunnerTest(AsyncTestCase):
         )
         self._assert_text_deltas(scriptrunner, ["loop_forever"])
 
+    def test_sessionstate_is_disconnected_after_stop(self):
+        """After ScriptRunner.request_stop is called, any operations on its
+        SessionState instance are no-ops.
+        """
+        # Create a TestRunner and stick some initial session_state into it.
+        scriptrunner = TestScriptRunner("infinite_loop.py")
+        scriptrunner._session_state["foo"] = "bar"
+        self.assertEqual("bar", scriptrunner._session_state["foo"])
+        scriptrunner.start()
+
+        # Stop the TestRunner
+        scriptrunner.request_stop()
+
+        # We can neither get nor set SessionState values after request_stop.
+        self.assertRaises(KeyError, lambda: scriptrunner._session_state["foo"])
+        scriptrunner._session_state["new_foo"] = 3
+        self.assertRaises(KeyError, lambda: scriptrunner._session_state["new_foo"])
+
+        # Assert that Widget registration is a no-op
+        widget_state = scriptrunner._session_state.register_widget(
+            MagicMock(),
+            user_key="mock_user_key",
+        )
+        self.assertEqual(False, widget_state.value_changed)
+
+        # Ensure the ScriptRunner thread shuts down.
+        scriptrunner.join()
+
     def test_widgets(self):
         """Tests that widget values behave as expected."""
         scriptrunner = TestScriptRunner("widgets_script.py")
-        try:
-            scriptrunner.request_rerun(RerunData())
-            scriptrunner.start()
+        scriptrunner.request_rerun(RerunData())
+        scriptrunner.start()
 
-            # Default widget values
-            require_widgets_deltas([scriptrunner])
-            self._assert_text_deltas(
-                scriptrunner, ["False", "ahoy!", "0", "False", "loop_forever"]
-            )
+        # Default widget values
+        require_widgets_deltas([scriptrunner])
+        self._assert_text_deltas(
+            scriptrunner, ["False", "ahoy!", "0", "False", "loop_forever"]
+        )
 
-            # Update widgets
-            states = WidgetStates()
-            w1_id = scriptrunner.get_widget_id("checkbox", "checkbox")
-            _create_widget(w1_id, states).bool_value = True
-            w2_id = scriptrunner.get_widget_id("text_area", "text_area")
-            _create_widget(w2_id, states).string_value = "matey!"
-            w3_id = scriptrunner.get_widget_id("radio", "radio")
-            _create_widget(w3_id, states).int_value = 2
-            w4_id = scriptrunner.get_widget_id("button", "button")
-            _create_widget(w4_id, states).trigger_value = True
+        # Update widgets
+        states = WidgetStates()
+        w1_id = scriptrunner.get_widget_id("checkbox", "checkbox")
+        _create_widget(w1_id, states).bool_value = True
+        w2_id = scriptrunner.get_widget_id("text_area", "text_area")
+        _create_widget(w2_id, states).string_value = "matey!"
+        w3_id = scriptrunner.get_widget_id("radio", "radio")
+        _create_widget(w3_id, states).int_value = 2
+        w4_id = scriptrunner.get_widget_id("button", "button")
+        _create_widget(w4_id, states).trigger_value = True
 
-            # Explicitly clear deltas before re-running, to prevent a race
-            # condition. (The ScriptRunner will clear the deltas when it
-            # starts the re-run, but if that doesn't happen before
-            # require_widgets_deltas() starts polling the ScriptRunner's deltas,
-            # it will see stale deltas from the last run.)
-            scriptrunner.clear_forward_msgs()
-            scriptrunner.request_rerun(RerunData(widget_states=states))
+        # Explicitly clear deltas before re-running, to prevent a race
+        # condition. (The ScriptRunner will clear the deltas when it
+        # starts the re-run, but if that doesn't happen before
+        # require_widgets_deltas() starts polling the ScriptRunner's deltas,
+        # it will see stale deltas from the last run.)
+        scriptrunner.clear_forward_msgs()
+        scriptrunner.request_rerun(RerunData(widget_states=states))
 
-            require_widgets_deltas([scriptrunner])
-            self._assert_text_deltas(
-                scriptrunner, ["True", "matey!", "2", "True", "loop_forever"]
-            )
+        require_widgets_deltas([scriptrunner])
+        self._assert_text_deltas(
+            scriptrunner, ["True", "matey!", "2", "True", "loop_forever"]
+        )
 
-            # Rerun with previous values. The button should be reset;
-            # everything else should be the same.
-            scriptrunner.clear_forward_msgs()
-            scriptrunner.request_rerun(RerunData())
+        # Rerun with previous values. Our button should be reset;
+        # everything else should be the same.
+        scriptrunner.clear_forward_msgs()
+        scriptrunner.request_rerun(RerunData())
 
-            require_widgets_deltas([scriptrunner])
-            self._assert_text_deltas(
-                scriptrunner, ["True", "matey!", "2", "False", "loop_forever"]
-            )
+        require_widgets_deltas([scriptrunner])
+        self._assert_text_deltas(
+            scriptrunner, ["True", "matey!", "2", "False", "loop_forever"]
+        )
 
-        finally:
-            scriptrunner.request_stop()
-            scriptrunner.join()
-
-            self._assert_no_exceptions(scriptrunner)
+        scriptrunner.request_stop()
+        scriptrunner.join()
+        self._assert_no_exceptions(scriptrunner)
 
     @patch(
         "streamlit.source_util.get_pages",
@@ -735,6 +759,39 @@ class ScriptRunnerTest(AsyncTestCase):
                 ],
             )
 
+    def test_rerun_caching(self):
+        """Test that st.caches are maintained across script runs."""
+        # Make sure there are no caches from other tests.
+        caching._mem_caches.clear()
+
+        # Run st_cache_script.
+        runner = TestScriptRunner("st_cache_script.py")
+        runner.request_rerun(RerunData())
+        runner.start()
+        runner.join()
+
+        # The script has 5 cached functions, each of which writes out
+        # some text.
+        self._assert_text_deltas(
+            runner,
+            [
+                "cached function called",
+                "cached function called",
+                "cached function called",
+                "cached function called",
+                "cached_depending_on_not_yet_defined called",
+            ],
+        )
+
+        # Re-run the script on a second runner.
+        runner = TestScriptRunner("st_cache_script.py")
+        runner.request_rerun(RerunData())
+        runner.start()
+        runner.join()
+
+        # The cached functions should not have been called on this second run
+        self._assert_text_deltas(runner, [])
+
     def test_invalidating_cache(self):
         """Test that st.caches are cleared when a dependency changes."""
         # Make sure there are no caches from other tests.
@@ -777,6 +834,42 @@ class ScriptRunnerTest(AsyncTestCase):
             [
                 "cached_depending_on_not_yet_defined called",
             ],
+        )
+
+    @patch(
+        "streamlit.source_util.get_pages",
+        MagicMock(
+            return_value={
+                "hash2": {
+                    "page_script_hash": "hash2",
+                    "script_path": os.path.join(
+                        os.path.dirname(__file__), "test_data", "good_script2.py"
+                    ),
+                },
+            },
+        ),
+    )
+    def test_page_script_hash_to_script_path(self):
+        scriptrunner = TestScriptRunner("good_script.py")
+        scriptrunner.request_rerun(RerunData(page_script_hash="hash2"))
+        scriptrunner.start()
+        scriptrunner.join()
+
+        self._assert_no_exceptions(scriptrunner)
+        self._assert_events(
+            scriptrunner,
+            [
+                ScriptRunnerEvent.SCRIPT_STARTED,
+                ScriptRunnerEvent.ENQUEUE_FORWARD_MSG,
+                ScriptRunnerEvent.SCRIPT_STOPPED_WITH_SUCCESS,
+                ScriptRunnerEvent.SHUTDOWN,
+            ],
+        )
+        self._assert_text_deltas(scriptrunner, [text_utf2])
+        self.assertEqual(
+            os.path.join(os.path.dirname(__file__), "test_data", "good_script2.py"),
+            sys.modules["__main__"].__file__,
+            (" ScriptRunner should set the __main__.__file__" "attribute correctly"),
         )
 
     @patch(
@@ -973,9 +1066,9 @@ class TestScriptRunner(ScriptRunner):
         super().__init__(
             session_id="test session id",
             main_script_path=main_script_path,
+            client_state=ClientState(),
             session_state=SessionState(),
-            uploaded_file_mgr=MemoryUploadedFileManager("/mock/upload"),
-            script_cache=ScriptCache(),
+            uploaded_file_mgr=UploadedFileManager(),
             initial_rerun_data=RerunData(),
             user_info={"email": "test@test.com"},
         )

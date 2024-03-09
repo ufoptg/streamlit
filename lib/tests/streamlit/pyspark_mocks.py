@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 from pyspark.sql.dataframe import DataFrame as PySparkDataFrame
@@ -48,7 +46,7 @@ class DataFrame:
     def __init__(
         self, is_map: bool = False, is_numpy_arr: bool = False, num_of_rows: int = 50000
     ):
-        self._data: pd.DataFrame | None = None
+        self._data = None
         self._is_map: bool = is_map
         self._num_of_rows: int = num_of_rows
         self._is_numpy_arr: bool = is_numpy_arr
@@ -75,7 +73,6 @@ class DataFrame:
 
     def toPandas(self):
         self._lazy_evaluation()
-        assert self._data is not None
         if self._limit > 0:
             return self._data.head(self._limit)
         return self._data

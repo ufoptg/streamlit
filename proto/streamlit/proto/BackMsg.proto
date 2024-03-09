@@ -1,5 +1,5 @@
 /**!
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,7 @@
 
 syntax = "proto3";
 
-option java_package = "com.snowflake.apps.streamlit";
-option java_outer_classname = "BackMsgProto";
-
 import "streamlit/proto/ClientState.proto";
-import "streamlit/proto/Common.proto";
 
 // A message from the browser to the server.
 message BackMsg {
@@ -50,29 +46,12 @@ message BackMsg {
     // DEPRECATED. This is now inside ClientState.
     // WidgetStates update_widgets = 9;
 
-    // DEPRECATED. Set to true to ask the server to close the connection
-    // bool close_connection = 10;
+    // Set to true to ask the server to close the connection
+    bool close_connection = 10;
 
     ClientState rerun_script = 11;
 
     bool load_git_info = 12;
-
-    // Test and dev-mode only field used to ask the server to disconnect the
-    // client's websocket connection. This message is IGNORED unless the
-    // runtime is configured with global.developmentMode = True.
-    bool debug_disconnect_websocket = 14;
-
-    // Test and dev-mode only field used to ask the server to shut down the
-    // runtime. This message is IGNORED unless the runtime is configured with
-    // global.developmentMode = True.
-    bool debug_shutdown_runtime = 15;
-
-    // Requests that the server generate URLs for getting/uploading/deleting
-    // files for the `st.file_uploader` widget
-    FileURLsRequest file_urls_request = 16;
-
-    // Sends an app heartbeat message through the websocket
-    bool app_heartbeat = 17;
   }
 
   // An ID used to associate this BackMsg with the corresponding ForwardMsgs
@@ -80,7 +59,5 @@ message BackMsg {
   // should only be used for testing.
   string debug_last_backmsg_id = 13;
 
-  reserved 1, 2, 3, 4, 8, 9, 10;
-
-  // Next: 18
+  reserved 1, 2, 3, 4, 8, 9;
 }

@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -135,8 +135,6 @@ def test_get_pages(tmpdir):
         "page.py",
         # This file shouldn't appear as a page because it's hidden.
         ".hidden_file.py",
-        # This file shouldn't appear as a page because it's __init__.py, so also hidden.
-        "__init__.py",
         # This shouldn't appear because it's not a Python file.
         "not_a_page.rs",
     ]

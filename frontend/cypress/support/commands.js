@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -85,30 +85,10 @@ Cypress.Commands.add("changeTheme", theme => {
   cy.get('[data-baseweb="modal"] [aria-label="Close"]').click()
 })
 
-/**
- * Normal usage:
- *
- *   cy.get("my selector").first().matchImageSnapshot("my filename")
- *
- * This means the "subject" in the matchThemedSnapshots function will be the
- * result of cy.get("my selector").first(). However, in some cases the subject
- * detaches from the DOM when we change themes (this seems to happen with the
- * image in the staticfiles_app test, for example), causing Cypress to fail.
- * When that happens, you can fix the issue by passing a getSubject function
- * to this command to get the subject from the DOM again, like this:
- *
- *   cy.get("body").matchImageSnapshot(
- *     "my filename", {},
- *     () => cy.get("my selector").first()
- *   )
- *
- * Note that the example above uses cy.get("body") because that part of the
- * incantation doesn't actually matter. It just needs to exist.
- */
 Cypress.Commands.add(
   "matchThemedSnapshots",
   { prevSubject: true },
-  (subject, name, options, getSubject) => {
+  (subject, name, options) => {
     const testName = name || Cypress.mocha.getRunner().suite.ctx.test.title
     const setStates = () => {
       const { focus } = _.pick(options, ["focus"])
@@ -119,15 +99,11 @@ Cypress.Commands.add(
       }
     }
 
-    if (!getSubject) {
-      getSubject = () => cy.wrap(subject)
-    }
-
     // Get dark mode snapshot first. Taking light mode snapshot first
     // for some reason ends up comparing dark with light
     cy.changeTheme("Dark")
     setStates()
-    getSubject().matchImageSnapshot(`${testName}-dark`, {
+    cy.wrap(subject).matchImageSnapshot(`${testName}-dark`, {
       ...options,
       force: false,
     })
@@ -135,7 +111,7 @@ Cypress.Commands.add(
     // Revert back to light mode
     cy.changeTheme("Light")
     setStates()
-    getSubject().matchImageSnapshot(testName, { ...options, force: false })
+    cy.wrap(subject).matchImageSnapshot(name, { ...options, force: false })
     cy.screenshot()
   }
 )
@@ -147,32 +123,27 @@ Cypress.Commands.overwrite(
   "matchImageSnapshot",
   (originalFn, subject, name, options) => {
     cy.wrap(subject).trigger("blur", _.pick(options, ["force"]))
-
-    const headerHeight = 2.875 // In rem
-    const fontSizeMedium = 16 // In px
-    cy.get(subject).scrollIntoView({
-      offset: {
-        top: -1 * headerHeight * fontSizeMedium,
-      },
-    })
-
     return originalFn(subject, name, options)
   }
 )
 
-Cypress.Commands.add("loadApp", (appUrl, timeout) => {
+Cypress.Commands.add("loadApp", appUrl => {
   cy.visit(appUrl)
 
-  cy.waitForScriptFinish(timeout)
-})
+  // Wait until we know the script has started. We have to do this
+  // because the status widget is initially hidden (so that it doesn't quickly
+  // appear and disappear if the user has it configured to be hidden). Without
+  // waiting here, it's possible to pass the status widget check below before
+  // it initially renders.
+  cy.get("[data-testid='stAppViewContainer']", { timeout: 10000 }).should(
+    "not.contain",
+    "Please wait..."
+  )
 
-Cypress.Commands.add("waitForScriptFinish", (timeout = 20000) => {
-  // Wait until we know the script has started. We determine this by checking
-  // whether the app is in notRunning state. (The data-teststate attribute goes
-  // through the sequence "initial" -> "running" -> "notRunning")
-  cy.get("[data-testid='stApp'][data-teststate='notRunning']", {
-    timeout,
-  }).should("exist")
+  // Wait until the script is no longer running.
+  cy.get("[data-testid='stStatusWidget']", { timeout: 10000 }).should(
+    "not.exist"
+  )
 })
 
 // Indexing into a list of elements produced by `cy.get()` may fail if not enough
@@ -191,38 +162,15 @@ Cypress.Commands.add("getIndexed", (selector, index) =>
 // attempting to take snapshots. This command removes the problematic parts to
 // avoid this issue.
 Cypress.Commands.add("prepForElementSnapshots", () => {
-  // Look for the ribbon and if its found,
-  // make the ribbon decoration line disappear as it can occasionally get
+  // Make the ribbon decoration line disappear as it can occasionally get
   // caught when a snapshot is taken.
-  cy.get(".stApp").then($body => {
-    if ($body.find("[data-testid='stDecoration']").length > 0) {
-      cy.get("[data-testid='stDecoration']").invoke("css", "display", "none")
-    }
-  })
+  cy.get("[data-testid='stDecoration']").invoke("css", "display", "none")
 
   // Similarly, the header styling can sometimes interfere with the snapshot
   // for elements near the top of the page.
   cy.get(".stApp > header").invoke("css", "background", "none")
   cy.get(".stApp > header").invoke("css", "backdropFilter", "none")
 })
-
-// Allows the user to execute code within the iframe itself
-// This is useful for testing/changing examples of Streamlit embeddings
-Cypress.Commands.add(
-  "iframe",
-  { prevSubject: "element" },
-  ($iframe, callback = () => {}) => {
-    // For more info on targeting inside iframes refer to this GitHub issue:
-    // https://github.com/cypress-io/cypress/issues/136
-    cy.log("Getting iframe body")
-
-    return cy
-      .wrap($iframe)
-      .should(iframe => expect(iframe.contents().find("body")).to.exist)
-      .then(iframe => cy.wrap(iframe.contents().find("body")))
-      .within({}, callback)
-  }
-)
 
 // Rerun the script by simulating the user pressing the 'r' key.
 Cypress.Commands.add("rerunScript", () => {
@@ -238,15 +186,4 @@ Cypress.Commands.add("waitForRerun", () => {
   cy.get("[data-testid='stStatusWidget']", { timeout: 10000 }).should(
     "not.exist"
   )
-})
-
-// https://github.com/quasarframework/quasar/issues/2233
-// This error means that ResizeObserver was not able to deliver all observations within a single animation frame
-// It is benign (your site will not break).
-const resizeObserverLoopErrRe = /^[^(ResizeObserver loop limit exceeded)]/
-Cypress.on("uncaught:exception", err => {
-  /* returning false here prevents Cypress from failing the test */
-  if (resizeObserverLoopErrRe.test(err.message)) {
-    return false
-  }
 })

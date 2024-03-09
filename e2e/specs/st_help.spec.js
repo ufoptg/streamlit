@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,8 @@ describe("st.help", () => {
   });
 
   it("matches the snapshot", () => {
-    cy.get("[data-testid='stDocstring']").each((el, idx) => {
-      return cy.wrap(el).matchThemedSnapshots(`help-${idx}`);
-    });
+    cy.get(
+      ".element-container [data-testid='stDocstring']"
+    ).matchThemedSnapshots("help");
   });
 });
-

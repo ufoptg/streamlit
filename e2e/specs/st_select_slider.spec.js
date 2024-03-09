@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ describe("st.select_slider", () => {
   });
 
   it("displays correct number of elements", () => {
-    cy.get(".element-container .stSlider").should("have.length", 9);
+    cy.get(".element-container .stSlider").should("have.length", 8);
   });
 
   it("looks right when disabled", () => {
@@ -164,22 +164,6 @@ describe("st.select_slider", () => {
     cy.get(".stMarkdown").should(
       "contain.text",
       "Value 8: 2" + "Select slider changed: True"
-    );
-  });
-
-  it("realigns label values when expander re-opened", () => {
-    // Closes the expander
-    cy.get('[data-testid="stExpander"] summary').click();
-
-    // Reopens the expander
-    cy.get('[data-testid="stExpander"] summary').click();
-
-    // Positioning error occurs on overflow of expander container
-    // which occurs when position left set to 0px
-    cy.getIndexed(".StyledThumbValue", 11).should(
-      "not.have.css",
-      "left",
-      "0px"
     );
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 
 const path = require("path");
-const NO_OF_BUTTONS = 7
 
 describe("st.download_button", () => {
   beforeEach(() => {
@@ -25,14 +24,14 @@ describe("st.download_button", () => {
   });
 
   it("shows widget correctly", () => {
-    cy.get(".stDownloadButton").should("have.length", NO_OF_BUTTONS);
+    cy.get(".stDownloadButton").should("have.length", 3);
     cy.get(".stDownloadButton")
       .first()
       .matchThemedSnapshots("download-button-widget");
   });
 
   it("shows disabled widget correctly", () => {
-    cy.get(".stDownloadButton").should("have.length", NO_OF_BUTTONS);
+    cy.get(".stDownloadButton").should("have.length", 3);
     cy.getIndexed(".stDownloadButton", 1).matchThemedSnapshots(
       "disabled-download-button"
     );
@@ -50,39 +49,11 @@ describe("st.download_button", () => {
   });
 
   it("downloads RAR archive file when the button is clicked", () => {
-    cy.getIndexed(".stDownloadButton button", 2)
-      .should("have.length.at.least", 1)
+    cy.get(".stDownloadButton button")
+      .should("have.length.at.least", 3)
+      .last()
       .click();
     const downloadsFolder = Cypress.config("downloadsFolder");
     cy.readFile(path.join(downloadsFolder, "archive.rar")).should("exist");
-  });
-
-  it("renders useContainerWidth st.download_button correctly", () => {
-    cy.getIndexed(".stDownloadButton button", 3)
-      .should("have.length.at.least", 1)
-      .click().matchThemedSnapshots("use-container-width-button");
-  });
-
-  it("renders useContainerWidth + help st.download_button correctly", () => {
-    cy.getIndexed(".stDownloadButton button", 4)
-      .trigger('mouseover').matchThemedSnapshots("container-width-help-button", { padding: [60, 0, 0, 0] });
-  });
-
-  it("shows primary button correctly", () => {
-    cy.get(".stDownloadButton").should("have.length", NO_OF_BUTTONS);
-
-    cy.getIndexed(".stDownloadButton", 5).matchThemedSnapshots(
-      "primary-download-button"
-    );
-  });
-
-  it("sets value correctly when user clicks", () => {
-    cy.get(".stMarkdown").contains("value: False");
-
-    cy.get(".stDownloadButton button")
-      .last()
-      .click();
-
-    cy.get(".stMarkdown").contains("value: True");
   });
 });

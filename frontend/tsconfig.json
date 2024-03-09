@@ -18,6 +18,5 @@
     "strict": true,
     "target": "es5"
   },
-  "include": ["lib", "app"],
-  "exclude": ["*/proto.js", "*/proto.d.ts"]
+  "include": ["src"]
 }

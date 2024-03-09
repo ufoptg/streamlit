@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,52 +22,50 @@ from unittest.mock import MagicMock
 from streamlit.proto.Delta_pb2 import Delta
 from streamlit.proto.ForwardMsg_pb2 import ForwardMsg
 from streamlit.runtime import Runtime
-from streamlit.runtime.caching.storage.dummy_cache_storage import (
-    MemoryCacheStorageManager,
-)
+from streamlit.runtime.app_session import AppSession
 from streamlit.runtime.forward_msg_queue import ForwardMsgQueue
 from streamlit.runtime.media_file_manager import MediaFileManager
 from streamlit.runtime.memory_media_file_storage import MemoryMediaFileStorage
-from streamlit.runtime.memory_uploaded_file_manager import MemoryUploadedFileManager
 from streamlit.runtime.scriptrunner import (
     ScriptRunContext,
     add_script_run_ctx,
     get_script_run_ctx,
 )
-from streamlit.runtime.scriptrunner.script_requests import ScriptRequests
 from streamlit.runtime.state import SafeSessionState, SessionState
-from streamlit.web.server.server import MEDIA_ENDPOINT, UPLOAD_FILE_ENDPOINT
+from streamlit.runtime.uploaded_file_manager import UploadedFileManager
+from streamlit.web.server.server import MEDIA_ENDPOINT
+
+
+class FakeAppSession(AppSession):
+    def __init__(self):
+        self._session_state = SessionState()
 
 
 class DeltaGeneratorTestCase(unittest.TestCase):
     def setUp(self):
         self.forward_msg_queue = ForwardMsgQueue()
-
-        # Save our thread's current ScriptRunContext
-        self.orig_report_ctx = get_script_run_ctx()
-
-        # Create a new ScriptRunContext to use for the test.
-        self.script_run_ctx = ScriptRunContext(
+        self.orig_report_ctx = None
+        self.new_script_run_ctx = ScriptRunContext(
             session_id="test session id",
             _enqueue=self.forward_msg_queue.enqueue,
             query_string="",
-            session_state=SafeSessionState(SessionState(), lambda: None),
-            uploaded_file_mgr=MemoryUploadedFileManager(UPLOAD_FILE_ENDPOINT),
-            main_script_path="",
+            session_state=SafeSessionState(SessionState()),
+            uploaded_file_mgr=UploadedFileManager(),
             page_script_hash="",
             user_info={"email": "test@test.com"},
-            script_requests=ScriptRequests(),
         )
-        add_script_run_ctx(threading.current_thread(), self.script_run_ctx)
+
+        self.orig_report_ctx = get_script_run_ctx()
+        add_script_run_ctx(threading.current_thread(), self.new_script_run_ctx)
+
+        self.app_session = FakeAppSession()
 
         # Create a MemoryMediaFileStorage instance, and the MediaFileManager
         # singleton.
         self.media_file_storage = MemoryMediaFileStorage(MEDIA_ENDPOINT)
 
         mock_runtime = MagicMock(spec=Runtime)
-        mock_runtime.cache_storage_manager = MemoryCacheStorageManager()
         mock_runtime.media_file_mgr = MediaFileManager(self.media_file_storage)
-        mock_runtime.uploaded_file_mgr = self.script_run_ctx.uploaded_file_mgr
         Runtime._instance = mock_runtime
 
     def tearDown(self):

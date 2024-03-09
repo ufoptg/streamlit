@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,18 +14,13 @@
 
 """DeltaGenerator Unittest."""
 
-import asyncio
 import functools
-import inspect
 import json
 import logging
 import re
-import threading
 import unittest
-from copy import deepcopy
 from unittest.mock import MagicMock, patch
 
-import pytest
 from parameterized import parameterized
 
 import streamlit as st
@@ -41,8 +36,6 @@ from streamlit.proto.RootContainer_pb2 import RootContainer
 from streamlit.proto.Text_pb2 import Text as TextProto
 from streamlit.proto.TextArea_pb2 import TextArea
 from streamlit.proto.TextInput_pb2 import TextInput
-from streamlit.runtime.scriptrunner import add_script_run_ctx
-from streamlit.runtime.state.common import compute_widget_id
 from streamlit.runtime.state.widgets import _build_duplicate_widget_message
 from tests.delta_generator_test_case import DeltaGeneratorTestCase
 
@@ -60,7 +53,7 @@ class RunWarningTest(unittest.TestCase):
     @patch("streamlit.runtime.Runtime.exists", MagicMock(return_value=False))
     def test_run_warning_presence(self):
         """Using Streamlit without `streamlit run` produces a warning."""
-        with self.assertLogs("streamlit", level=logging.WARNING) as logs:
+        with self.assertLogs(level=logging.WARNING) as logs:
             delta_generator._use_warning_has_been_displayed = False
             st.write("Using delta generator")
             output = "".join(logs.output)
@@ -71,103 +64,13 @@ class RunWarningTest(unittest.TestCase):
     def test_run_warning_absence(self):
         """Using Streamlit through the CLI results in a Runtime being instantiated,
         so it produces no usage warning."""
-        with self.assertLogs("streamlit", level=logging.WARNING) as logs:
+        with self.assertLogs(level=logging.WARNING) as logs:
             delta_generator._use_warning_has_been_displayed = False
             st.write("Using delta generator")
             # assertLogs is being used as a context manager, but it also checks
             # that some log output was captured, so we have to let it capture something
             get_logger("root").warning("irrelevant warning so assertLogs passes")
             self.assertNotRegex("".join(logs.output), r"streamlit run")
-
-    def test_public_api(self):
-        """Test that we don't accidentally remove (or add) symbols
-        to the public `DeltaGenerator` API.
-        """
-        api = {
-            name
-            for name, _ in inspect.getmembers(DeltaGenerator)
-            if not name.startswith("_")
-        }
-        self.assertEqual(
-            api,
-            {
-                "add_rows",
-                "altair_chart",
-                "area_chart",
-                "audio",
-                "balloons",
-                "bar_chart",
-                "bokeh_chart",
-                "button",
-                "camera_input",
-                "caption",
-                "chat_input",
-                "chat_message",
-                "checkbox",
-                "code",
-                "color_picker",
-                "columns",
-                "container",
-                "dataframe",
-                "data_editor",
-                "date_input",
-                "dg",
-                "divider",
-                "download_button",
-                "empty",
-                "error",
-                "exception",
-                "expander",
-                "experimental_data_editor",
-                "file_uploader",
-                "form",
-                "form_submit_button",
-                "graphviz_chart",
-                "header",
-                "help",
-                "id",
-                "image",
-                "info",
-                "json",
-                "latex",
-                "line_chart",
-                "link_button",
-                "map",
-                "markdown",
-                "metric",
-                "multiselect",
-                "number_input",
-                "page_link",
-                "plotly_chart",
-                "popover",
-                "progress",
-                "pydeck_chart",
-                "pyplot",
-                "radio",
-                "scatter_chart",
-                "select_slider",
-                "selectbox",
-                "slider",
-                "snow",
-                "subheader",
-                "success",
-                "status",
-                "table",
-                "tabs",
-                "text",
-                "text_area",
-                "text_input",
-                "time_input",
-                "title",
-                "toast",
-                "toggle",
-                "vega_lite_chart",
-                "video",
-                "warning",
-                "write",
-                "write_stream",
-            },
-        )
 
 
 class DeltaGeneratorTest(DeltaGeneratorTestCase):
@@ -305,27 +208,6 @@ class DeltaGeneratorClassTest(DeltaGeneratorTestCase):
         self.assertTrue(dg._cursor.is_locked)
         self.assertEqual(dg._cursor.index, 1234)
 
-    def test_can_deepcopy_delta_generators(self):
-        cursor = LockedCursor(root_container=RootContainer.MAIN, index=1234)
-        dg1 = DeltaGenerator(root_container=RootContainer.MAIN, cursor=cursor)
-        dg2 = deepcopy(dg1)
-
-        self.assertEqual(dg1._root_container, dg2._root_container)
-        self.assertIsNone(dg1._parent)
-        self.assertIsNone(dg2._parent)
-        self.assertEqual(dg1._block_type, dg2._block_type)
-
-        # Check that the internals of the Cursors look the same. Note the cursors
-        # themselves will be different objects so won't compare equal.
-        c1 = dg1._cursor
-        c2 = dg2._cursor
-        self.assertIsInstance(c1, LockedCursor)
-        self.assertIsInstance(c2, LockedCursor)
-        self.assertEqual(c1._root_container, c2._root_container)
-        self.assertEqual(c1._index, c2._index)
-        self.assertEqual(c1._parent_path, c2._parent_path)
-        self.assertEqual(c1._props, c2._props)
-
     def test_enqueue_null(self):
         # Test "Null" Delta generators
         dg = DeltaGenerator(root_container=None)
@@ -428,33 +310,10 @@ class DeltaGeneratorColumnsTest(DeltaGeneratorTestCase):
         with self.assertRaises(StreamlitAPIException):
             st.columns([5.0, 0.0, 1.0])
 
-    def test_two_levels_of_columns_does_not_raise_any_exception(self):
+    def test_nested_columns(self):
         level1, _ = st.columns(2)
-        try:
-            _, _ = level1.columns(2)
-        except StreamlitAPIException:
-            self.fail("Error, one level of nested columns should be allowed!")
-
-    def test_three_levels_of_columns_raise_streamlit_api_exception(self):
-        level1, _ = _ = st.columns(2)
-        level2, _ = level1.columns(2)
-        exc = "Columns can only be placed inside other columns up to one level of nesting."
-        with pytest.raises(StreamlitAPIException, match=exc):
-            _, _ = level2.columns(2)
-
-    def test_one_level_of_columns_is_allowed_in_the_sidebar(self):
-        try:
-            with st.sidebar:
-                _, _ = st.columns(2)
-        except StreamlitAPIException:
-            self.fail("Error, 1 level column should be allowed in the sidebar!")
-
-    def test_two_levels_of_columns_in_the_sidebar_raise_streamlit_api_exception(self):
-        exc = "Columns cannot be placed inside other columns in the sidebar. This is only possible in the main area of the app."
-        with pytest.raises(StreamlitAPIException, match=exc):
-            with st.sidebar:
-                col1, _ = st.columns(2)
-                _, _ = col1.columns(2)
+        with self.assertRaises(StreamlitAPIException):
+            level2, _ = level1.columns(2)
 
 
 class DeltaGeneratorExpanderTest(DeltaGeneratorTestCase):
@@ -503,121 +362,6 @@ class DeltaGeneratorWithTest(DeltaGeneratorTestCase):
                 make_delta_path(RootContainer.MAIN, (0,), 1),
                 msg.metadata.delta_path,
             )
-
-    def test_threads_with(self):
-        """
-        Tests that with statements work correctly when multiple threads are involved.
-
-        The test sequence is as follows:
-
-              Main Thread       |       Worker Thread
-        -----------------------------------------------------
-        with container1:        |
-                                | with container2:
-        st.markdown("Object 1") |
-                                | st.markdown("Object 2")
-
-
-        We check that Object1 is created in container1 and object2 is created in container2.
-        """
-        container1 = st.container()
-        container2 = st.container()
-
-        with_1 = threading.Event()
-        with_2 = threading.Event()
-        object_1 = threading.Event()
-
-        def thread():
-            with_1.wait()
-            with container2:
-                with_2.set()
-                object_1.wait()
-
-                st.markdown("Object 2")
-                msg = self.get_message_from_queue()
-                self.assertEqual(
-                    make_delta_path(RootContainer.MAIN, (1,), 0),
-                    msg.metadata.delta_path,
-                )
-
-        worker_thread = threading.Thread(target=thread)
-        add_script_run_ctx(worker_thread)
-        worker_thread.start()
-
-        with container1:
-            with_1.set()
-            with_2.wait()
-
-            st.markdown("Object in container 1")
-            msg = self.get_message_from_queue()
-            self.assertEqual(
-                make_delta_path(RootContainer.MAIN, (0,), 0),
-                msg.metadata.delta_path,
-            )
-
-            object_1.set()
-            worker_thread.join()
-
-    def test_asyncio_with(self):
-        """
-        Tests that with statements work correctly when multiple async tasks are involved.
-
-        The test sequence is as follows:
-
-              Task 1             |       Task 2
-        -----------------------------------------------------
-        with container1:
-        asyncio.create_task()   ->
-                                 | st.markdown("Object 1a")
-                                 | with container2:
-        st.markdown("Object 1b") |
-                                 | st.markdown("Object 2")
-
-        In this scenario, Task 2 should inherit the container1 context from Task 1 when it is created, so Objects 1a and 1b
-        will both go in container 1, and object 2 will go in container 2.
-        """
-        container1 = st.container()
-        container2 = st.container()
-
-        with_2 = asyncio.Event()
-        object_1 = asyncio.Event()
-
-        async def task1():
-            with container1:
-                task = asyncio.create_task(task2())
-
-                await with_2.wait()
-
-                st.markdown("Object 1b")
-                msg = self.get_message_from_queue()
-                self.assertEqual(
-                    make_delta_path(RootContainer.MAIN, (0,), 1),
-                    msg.metadata.delta_path,
-                )
-
-                object_1.set()
-                await task
-
-        async def task2():
-            st.markdown("Object 1a")
-            msg = self.get_message_from_queue()
-            self.assertEqual(
-                make_delta_path(RootContainer.MAIN, (0,), 0),
-                msg.metadata.delta_path,
-            )
-
-            with container2:
-                with_2.set()
-                st.markdown("Object 2")
-                msg = self.get_message_from_queue()
-                self.assertEqual(
-                    make_delta_path(RootContainer.MAIN, (1,), 0),
-                    msg.metadata.delta_path,
-                )
-
-                await object_1.wait()
-
-        asyncio.get_event_loop().run_until_complete(task1())
 
 
 class DeltaGeneratorWriteTest(DeltaGeneratorTestCase):
@@ -747,6 +491,18 @@ class DeltaGeneratorWriteTest(DeltaGeneratorTestCase):
 
         assert element.markdown.body.startswith("<a#data>")
 
+    def test_code(self):
+        """Test st.code()"""
+        code = "print('Hello, %s!' % 'Streamlit')"
+        expected_body = "```python\n%s\n```" % code
+
+        st.code(code, language="python")
+        element = self.get_delta_from_queue().new_element
+
+        # st.code() creates a MARKDOWN text object that wraps
+        # the body inside a codeblock declaration
+        self.assertEqual(element.markdown.body, expected_body)
+
     def test_empty(self):
         """Test Empty."""
         st.empty()
@@ -755,68 +511,132 @@ class DeltaGeneratorWriteTest(DeltaGeneratorTestCase):
         self.assertEqual(element.empty, EmptyProto())
 
 
-class AutogeneratedWidgetIdTests(DeltaGeneratorTestCase):
-    def test_ids_are_equal_when_inputs_are_equal(self):
-        id1 = compute_widget_id(
-            "text_input",
-            label="Label #1",
-            default="Value #1",
-        )
+class DeltaGeneratorProgressTest(DeltaGeneratorTestCase):
+    """Test DeltaGenerator Progress."""
 
-        id2 = compute_widget_id(
-            "text_input",
-            label="Label #1",
-            default="Value #1",
-        )
-        assert id1 == id2
+    def test_progress_int(self):
+        """Test Progress with int values."""
+        values = [0, 42, 100]
+        for value in values:
+            st.progress(value)
+
+            element = self.get_delta_from_queue().new_element
+            self.assertEqual(value, element.progress.value)
+
+    def test_progress_float(self):
+        """Test Progress with float values."""
+        values = [0.0, 0.42, 1.0]
+        for value in values:
+            st.progress(value)
+
+            element = self.get_delta_from_queue().new_element
+            self.assertEqual(int(value * 100), element.progress.value)
+
+    def test_progress_bad_values(self):
+        """Test Progress with bad values."""
+        values = [-1, 101, -0.01, 1.01]
+        for value in values:
+            with self.assertRaises(StreamlitAPIException):
+                st.progress(value)
+
+        with self.assertRaises(StreamlitAPIException):
+            st.progress("some string")
+
+
+class AutogeneratedWidgetIdTests(DeltaGeneratorTestCase):
+    def test_ids_are_equal_when_proto_is_equal(self):
+        text_input1 = TextInput()
+        text_input1.label = "Label #1"
+        text_input1.default = "Value #1"
+
+        text_input2 = TextInput()
+        text_input2.label = "Label #1"
+        text_input2.default = "Value #1"
+
+        element1 = Element()
+        element1.text_input.CopyFrom(text_input1)
+
+        element2 = Element()
+        element2.text_input.CopyFrom(text_input2)
+
+        register_widget("text_input", element1.text_input, ctx=self.new_script_run_ctx)
+
+        with self.assertRaises(DuplicateWidgetID):
+            register_widget(
+                "text_input", element2.text_input, ctx=self.new_script_run_ctx
+            )
 
     def test_ids_are_diff_when_labels_are_diff(self):
-        id1 = compute_widget_id(
-            "text_input",
-            label="Label #1",
-            default="Value #1",
-        )
-        id2 = compute_widget_id(
-            "text_input",
-            label="Label #2",
-            default="Value #1",
-        )
+        text_input1 = TextInput()
+        text_input1.label = "Label #1"
+        text_input1.default = "Value #1"
 
-        assert id1 != id2
+        text_input2 = TextInput()
+        text_input2.label = "Label #2"
+        text_input2.default = "Value #1"
+
+        element1 = Element()
+        element1.text_input.CopyFrom(text_input1)
+
+        element2 = Element()
+        element2.text_input.CopyFrom(text_input2)
+
+        register_widget("text_input", element1.text_input, ctx=self.new_script_run_ctx)
+        register_widget("text_input", element2.text_input, ctx=self.new_script_run_ctx)
+
+        self.assertNotEqual(element1.text_input.id, element2.text_input.id)
 
     def test_ids_are_diff_when_types_are_diff(self):
-        id1 = compute_widget_id(
-            "text_input",
-            label="Label #1",
-            default="Value #1",
-        )
-        id2 = compute_widget_id(
-            "text_area",
-            label="Label #1",
-            default="Value #1",
-        )
-        assert id1 != id2
+        text_input1 = TextInput()
+        text_input1.label = "Label #1"
+        text_input1.default = "Value #1"
+
+        text_area2 = TextArea()
+        text_area2.label = "Label #1"
+        text_area2.default = "Value #1"
+
+        element1 = Element()
+        element1.text_input.CopyFrom(text_input1)
+
+        element2 = Element()
+        element2.text_area.CopyFrom(text_area2)
+
+        register_widget("text_input", element1.text_input, ctx=self.new_script_run_ctx)
+        register_widget("text_input", element2.text_input, ctx=self.new_script_run_ctx)
+
+        self.assertNotEqual(element1.text_input.id, element2.text_area.id)
 
 
 class KeyWidgetIdTests(DeltaGeneratorTestCase):
     def test_ids_are_diff_when_keys_are_diff(self):
-        id1 = compute_widget_id(
+        text_input1 = TextInput()
+        text_input1.label = "Label #1"
+        text_input1.default = "Value #1"
+
+        text_input2 = TextInput()
+        text_input2.label = "Label #1"
+        text_input2.default = "Value #1"
+
+        element1 = Element()
+        element1.text_input.CopyFrom(text_input1)
+
+        element2 = Element()
+        element2.text_input.CopyFrom(text_input2)
+
+        register_widget(
             "text_input",
+            element1.text_input,
             user_key="some_key1",
-            label="Label #1",
-            default="Value #1",
-            key="some_key1",
+            ctx=self.new_script_run_ctx,
         )
-
-        id2 = compute_widget_id(
+        register_widget(
             "text_input",
+            element2.text_input,
             user_key="some_key2",
-            label="Label #1",
-            default="Value #1",
-            key="some_key2",
+            ctx=self.new_script_run_ctx,
         )
 
-        assert id1 != id2
+        self.assertNotEqual(element1.text_input.id, element2.text_input.id)
 
 
 class DeltaGeneratorImageTest(DeltaGeneratorTestCase):

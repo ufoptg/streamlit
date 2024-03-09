@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,15 +30,6 @@
 // ***********************************************************
 
 import "./commands"
-import dayjs from "dayjs"
-import utc from "dayjs/plugin/utc"
-import timezone from "dayjs/plugin/timezone"
-import "cypress-real-events"
-
-dayjs.extend(utc)
-dayjs.extend(timezone)
-
-Cypress.dayjs = dayjs
 
 // Thiago has anti-aliasing setup on his machine so we match it in the tests
 const isStyleLoaded = head => head.find("#st-font-antialiased").length > 0

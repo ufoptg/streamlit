@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,25 +16,16 @@
 import os
 import textwrap
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, call, mock_open, patch
 
 import pytest
-import requests_mock
-from testfixtures import tempdir
 
 from streamlit import file_util
-from streamlit.runtime.credentials import (
-    Credentials,
-    _Activation,
-    _verify_email,
-    email_prompt,
-)
+from streamlit.runtime.credentials import Credentials, _Activation, _verify_email
 
-PROMPT = "click.prompt"
-MOCK_PATH = "/mock/home/folder/.streamlit/credentials.toml"
+PROMPT = "streamlit.runtime.credentials.click.prompt"
 
-mock_get_path = MagicMock(return_value=MOCK_PATH)
+mock_get_path = MagicMock(return_value="/mock/home/folder/.streamlit/credentials.toml")
 
 
 class CredentialsClassTest(unittest.TestCase):
@@ -56,7 +47,7 @@ class CredentialsClassTest(unittest.TestCase):
         """Test Credentials constructor."""
         c = Credentials()
 
-        self.assertEqual(c._conf_file, MOCK_PATH)
+        self.assertEqual(c._conf_file, "/mock/home/folder/.streamlit/credentials.toml")
         self.assertEqual(c.activation, None)
 
     @patch(
@@ -124,7 +115,7 @@ class CredentialsClassTest(unittest.TestCase):
         """Test Credentials.load() called twice."""
         c = Credentials.get_current()
         c.activation = _Activation("some_email", True)
-        with patch("streamlit.runtime.credentials._LOGGER") as p:
+        with patch("streamlit.runtime.credentials.LOGGER") as p:
             c.load()
             p.error.assert_called_once_with(
                 "Credentials already loaded. Not rereading file."
@@ -161,7 +152,7 @@ class CredentialsClassTest(unittest.TestCase):
             self.assertEqual(
                 str(e.value).split(":")[0],
                 "\nUnable to load credentials from "
-                f"{MOCK_PATH}.\n"
+                "/mock/home/folder/.streamlit/credentials.toml.\n"
                 'Run "streamlit reset" and try again.\n',
             )
 
@@ -222,6 +213,7 @@ class CredentialsClassTest(unittest.TestCase):
         with patch(
             "streamlit.runtime.credentials.open", mock_open(), create=True
         ) as open, patch("streamlit.runtime.credentials.os.makedirs") as make_dirs:
+
             c.save()
 
             make_dirs.assert_called_once_with(streamlit_root_path, exist_ok=True)
@@ -234,7 +226,7 @@ class CredentialsClassTest(unittest.TestCase):
         """Test Credentials.activate() already activated."""
         c = Credentials.get_current()
         c.activation = _Activation("some_email", True)
-        with patch("streamlit.runtime.credentials._LOGGER") as p:
+        with patch("streamlit.runtime.credentials.LOGGER") as p:
             with pytest.raises(SystemExit):
                 c.activate()
             self.assertEqual(p.error.call_count, 2)
@@ -247,7 +239,7 @@ class CredentialsClassTest(unittest.TestCase):
         """Test Credentials.activate() already activated but not valid."""
         c = Credentials.get_current()
         c.activation = _Activation("some_email", False)
-        with patch("streamlit.runtime.credentials._LOGGER") as p:
+        with patch("streamlit.runtime.credentials.LOGGER") as p:
             with pytest.raises(SystemExit):
                 c.activate()
             self.assertEqual(p.error.call_count, 2)
@@ -266,6 +258,7 @@ class CredentialsClassTest(unittest.TestCase):
         with patch.object(
             c, "load", side_effect=RuntimeError("Some error")
         ), patch.object(c, "save") as patched_save, patch(PROMPT) as patched_prompt:
+
             patched_prompt.side_effect = ["user@domain.com"]
             c.activate()
             patched_save.assert_called_once()
@@ -282,7 +275,7 @@ class CredentialsClassTest(unittest.TestCase):
 
         with patch("streamlit.runtime.credentials.os.remove") as p:
             Credentials.reset()
-            p.assert_called_once_with(MOCK_PATH)
+            p.assert_called_once_with("/mock/home/folder/.streamlit/credentials.toml")
 
         self.assertEqual(c, Credentials.get_current())
 
@@ -293,58 +286,12 @@ class CredentialsClassTest(unittest.TestCase):
         """Test Credentials.reset() with error."""
         with patch(
             "streamlit.runtime.credentials.os.remove", side_effect=OSError("some error")
-        ), patch("streamlit.runtime.credentials._LOGGER") as p:
+        ), patch("streamlit.runtime.credentials.LOGGER") as p:
+
             Credentials.reset()
             p.error.assert_called_once_with(
                 "Error removing credentials file: some error"
             )
-
-    @tempdir()
-    def test_email_send(self, temp_dir):
-        """Test that saving a new Credential sends an email"""
-
-        with requests_mock.mock() as m:
-            m.post("https://api.segment.io/v1/t", status_code=200)
-            creds: Credentials = Credentials.get_current()  # type: ignore
-            creds._conf_file = str(Path(temp_dir.path) / "config.toml")
-            creds.activation = _verify_email("email@test.com")
-            creds.save()
-            last_request = m.request_history[-1]
-            assert last_request.method == "POST"
-            assert last_request.url == "https://api.segment.io/v1/t"
-            assert '"userId": "email@test.com"' in last_request.text
-
-    @tempdir()
-    def test_email_not_send(self, temp_dir):
-        """
-        Test that saving a new Credential does not send an email if the email is invalid
-        """
-
-        with requests_mock.mock() as m:
-            m.post("https://api.segment.io/v1/t", status_code=200)
-            creds: Credentials = Credentials.get_current()  # type: ignore
-            creds._conf_file = str(Path(temp_dir.path) / "config.toml")
-            creds.activation = _verify_email("some_email")
-            creds.save()
-            assert len(m.request_history) == 0
-
-    @tempdir()
-    def test_email_send_exception_handling(self, temp_dir):
-        """
-        Test that saving a new Credential catches and logs failures from the segment
-        endpoint
-        """
-        with requests_mock.mock() as m:
-            m.post("https://api.segment.io/v1/t", status_code=403)
-            creds: Credentials = Credentials.get_current()  # type: ignore
-            creds._conf_file = str(Path(temp_dir.path) / "config.toml")
-            creds.activation = _verify_email("email@test.com")
-            with self.assertLogs(
-                "streamlit.runtime.credentials", level="ERROR"
-            ) as mock_logger:
-                creds.save()
-                assert len(mock_logger.output) == 1
-                assert "Error saving email: 403" in mock_logger.output[0]
 
 
 class CredentialsModulesTest(unittest.TestCase):
@@ -355,10 +302,3 @@ class CredentialsModulesTest(unittest.TestCase):
         self.assertTrue(_verify_email("user@domain.com").is_valid)
         self.assertTrue(_verify_email("").is_valid)
         self.assertFalse(_verify_email("missing_at_sign").is_valid)
-
-    def test_show_emojis(self):
-        self.assertIn("👋", email_prompt())
-
-    @patch("streamlit.runtime.credentials.env_util.IS_WINDOWS", new=True)
-    def test_show_emojis_windows(self):
-        self.assertNotIn("👋", email_prompt())

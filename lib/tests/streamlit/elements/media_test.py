@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ from streamlit.proto.RootContainer_pb2 import RootContainer
 from tests.delta_generator_test_case import DeltaGeneratorTestCase
 
 
-class MockMediaKind(Enum):
+class TestMediaKind(Enum):
     AUDIO = "audio"
     VIDEO = "video"
 
@@ -34,21 +34,21 @@ class MockMediaKind(Enum):
 class MediaTest(DeltaGeneratorTestCase):
     @parameterized.expand(
         [
-            ("foo.wav", "audio/wav", MockMediaKind.AUDIO, False),
-            ("path/to/foo.wav", "audio/wav", MockMediaKind.AUDIO, False),
-            (b"fake_audio_data", "audio/wav", MockMediaKind.AUDIO, False),
-            ("https://foo.com/foo.wav", "audio/wav", MockMediaKind.AUDIO, True),
-            ("foo.mp4", "video/mp4", MockMediaKind.VIDEO, False),
-            ("path/to/foo.mp4", "video/mp4", MockMediaKind.VIDEO, False),
-            (b"fake_video_data", "video/mp4", MockMediaKind.VIDEO, False),
-            ("https://foo.com/foo.mp4", "video/mp4", MockMediaKind.VIDEO, True),
+            ("foo.wav", "audio/wav", TestMediaKind.AUDIO, False),
+            ("path/to/foo.wav", "audio/wav", TestMediaKind.AUDIO, False),
+            (b"fake_audio_data", "audio/wav", TestMediaKind.AUDIO, False),
+            ("https://foo.com/foo.wav", "audio/wav", TestMediaKind.AUDIO, True),
+            ("foo.mp4", "video/mp4", TestMediaKind.VIDEO, False),
+            ("path/to/foo.mp4", "video/mp4", TestMediaKind.VIDEO, False),
+            (b"fake_video_data", "video/mp4", TestMediaKind.VIDEO, False),
+            ("https://foo.com/foo.mp4", "video/mp4", TestMediaKind.VIDEO, True),
         ]
     )
     def test_add_bytes_and_filenames_to_mediafilemanager(
         self,
         media_data: MediaData,
         mimetype: str,
-        media_kind: MockMediaKind,
+        media_kind: TestMediaKind,
         is_url: bool,
     ):
         """st.audio + st.video should register bytes and filenames with the
@@ -56,10 +56,10 @@ class MediaTest(DeltaGeneratorTestCase):
         """
         with mock.patch(
             "streamlit.runtime.media_file_manager.MediaFileManager.add"
-        ) as mock_mfm_add, mock.patch("streamlit.runtime.caching.save_media_data"):
+        ) as mock_mfm_add:
             mock_mfm_add.return_value = "https://mockoutputurl.com"
 
-            if media_kind is MockMediaKind.AUDIO:
+            if media_kind is TestMediaKind.AUDIO:
                 st.audio(media_data, mimetype)
                 element = self.get_delta_from_queue().new_element
                 element_url = element.audio.url

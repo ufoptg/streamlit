@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 
 import streamlit as st
-from streamlit.runtime.scriptrunner.script_requests import ScriptRequestType
+from streamlit.runtime.scriptrunner import StopException
 from tests.delta_generator_test_case import DeltaGeneratorTestCase
 
 
 class StopTest(DeltaGeneratorTestCase):
     def test_stop(self):
-        st.stop()
-        assert self.script_run_ctx.script_requests._state == ScriptRequestType.STOP
+        with pytest.raises(StopException) as exc_message:
+            st.stop()

@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,17 +15,9 @@
 import threading
 from typing import Any, Callable, Optional
 
-from streamlit.runtime.forward_msg_queue import ForwardMsgQueue
-from streamlit.runtime.memory_uploaded_file_manager import MemoryUploadedFileManager
-from streamlit.runtime.scriptrunner import ScriptRunContext, add_script_run_ctx
-from streamlit.runtime.state import SafeSessionState, SessionState
-
 
 def call_on_threads(
-    func: Callable[[int], Any],
-    num_threads: int,
-    timeout: Optional[float] = 0.25,
-    attach_script_run_ctx: bool = True,
+    func: Callable[[int], Any], num_threads: int, timeout: Optional[float] = 0.25
 ) -> None:
     """Call a function on multiple threads simultaneously and assert that no
     thread raises an unhandled exception.
@@ -37,39 +29,11 @@ def call_on_threads(
     the tested code is thread safe! Because threading issues tend to be
     non-deterministic, a flaky test that fails only occasionally is a good
     indicator of an underlying issue.
-
-    Parameters
-    ----------
-    func
-        The function to call on each thread.
-    num_threads
-        The number of threads to create.
-    timeout
-        If the thread runs for longer than this amount of time, raise an
-        Exception.
-    attach_script_run_ctx
-        If True, attach a mock ScriptRunContext to each thread before
-        starting.
     """
     threads = [
         ExceptionCapturingThread(name=f"Thread {ii}", target=func, args=[ii])
         for ii in range(num_threads)
     ]
-
-    if attach_script_run_ctx:
-        for ii in range(num_threads):
-            ctx = ScriptRunContext(
-                session_id=f"Thread{ii}_Session",
-                _enqueue=ForwardMsgQueue().enqueue,
-                query_string="",
-                session_state=SafeSessionState(SessionState(), lambda: None),
-                uploaded_file_mgr=MemoryUploadedFileManager("/mock/upload"),
-                main_script_path="",
-                page_script_hash="",
-                user_info={"email": "test@test.com"},
-            )
-            thread = threads[ii]
-            add_script_run_ctx(thread, ctx)
 
     for thread in threads:
         thread.start()

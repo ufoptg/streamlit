@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,10 +22,10 @@ from streamlit.hello.utils import show_code
 
 
 def mapping_demo():
-    @st.cache_data
+    @st.cache
     def from_data_file(filename):
         url = (
-            "https://raw.githubusercontent.com/streamlit/"
+            "http://raw.githubusercontent.com/streamlit/"
             "example-data/master/hello/v1/%s" % filename
         )
         return pd.read_json(url)
@@ -55,7 +55,7 @@ def mapping_demo():
                 get_position=["lon", "lat"],
                 get_text="name",
                 get_color=[0, 0, 0, 200],
-                get_size=10,
+                get_size=15,
                 get_alignment_baseline="'bottom'",
             ),
             "Outbound Flow": pdk.Layer(

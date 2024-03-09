@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@ import pandas as pd
 import streamlit as st
 
 st.header("Empty tables")
-st.table()
-st.table([])
-st.table(np.array(0))
-st.table(pd.DataFrame([]))
+st._arrow_table()
+st._arrow_table([])
+st._arrow_table(np.array(0))
+st._arrow_table(pd.DataFrame([]))
 
 st.header("Empty one-column table")
-st.table(np.array([]))
+st._arrow_table(np.array([]))
 
 st.header("Empty two-column table")
-st.table(pd.DataFrame({"lat": [], "lon": []}))
+st._arrow_table(pd.DataFrame({"lat": [], "lon": []}))

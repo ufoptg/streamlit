@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ class LoggerTest(unittest.TestCase):
         ]
         for k in data:
             logger.set_log_level(k)
-            self.assertEqual(k, logging.getLogger("streamlit").getEffectiveLevel())
+            self.assertEqual(k, logging.getLogger().getEffectiveLevel())
 
     def test_set_log_level_error(self):
         """Test streamlit.logger.set_log_level."""

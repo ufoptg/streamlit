@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,6 @@
 
 """A library of caching utilities."""
 
-from __future__ import annotations
-
 import contextlib
 import functools
 import hashlib
@@ -28,19 +26,28 @@ import threading
 import time
 from collections import namedtuple
 from dataclasses import dataclass
-from typing import Any, Callable, Final, Iterator, TypeVar, cast, overload
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 from cachetools import TTLCache
+from pympler.asizeof import asizeof
 
 import streamlit as st
 from streamlit import config, file_util, util
-from streamlit.deprecation_util import show_deprecation_warning
 from streamlit.elements.spinner import spinner
 from streamlit.error_util import handle_uncaught_app_exception
 from streamlit.errors import StreamlitAPIWarning
 from streamlit.logger import get_logger
-from streamlit.runtime.caching import CACHE_DOCS_URL
-from streamlit.runtime.caching.cache_type import CacheType, get_decorator_api_name
 from streamlit.runtime.legacy_caching.hashing import (
     HashFuncsDict,
     HashReason,
@@ -48,9 +55,8 @@ from streamlit.runtime.legacy_caching.hashing import (
 )
 from streamlit.runtime.metrics_util import gather_metrics
 from streamlit.runtime.stats import CacheStat, CacheStatsProvider
-from streamlit.util import HASHLIB_KWARGS
 
-_LOGGER: Final = get_logger(__name__)
+_LOGGER = get_logger(__name__)
 
 # The timer function we use with TTLCache. This is the default timer func, but
 # is exposed here as a constant so that it can be patched in unit tests.
@@ -59,88 +65,6 @@ _TTLCACHE_TIMER = time.monotonic
 
 _CacheEntry = namedtuple("_CacheEntry", ["value", "hash"])
 _DiskCacheEntry = namedtuple("_DiskCacheEntry", ["value"])
-
-# When we show the "st.cache is deprecated" warning, we make a recommendation about which new
-# cache decorator to switch to for the following data types:
-NEW_CACHE_FUNC_RECOMMENDATIONS: dict[str, CacheType] = {
-    # cache_data recommendations:
-    "str": CacheType.DATA,
-    "float": CacheType.DATA,
-    "int": CacheType.DATA,
-    "bytes": CacheType.DATA,
-    "bool": CacheType.DATA,
-    "datetime.datetime": CacheType.DATA,
-    "pandas.DataFrame": CacheType.DATA,
-    "pandas.Series": CacheType.DATA,
-    "numpy.bool_": CacheType.DATA,
-    "numpy.bool8": CacheType.DATA,
-    "numpy.ndarray": CacheType.DATA,
-    "numpy.float_": CacheType.DATA,
-    "numpy.float16": CacheType.DATA,
-    "numpy.float32": CacheType.DATA,
-    "numpy.float64": CacheType.DATA,
-    "numpy.float96": CacheType.DATA,
-    "numpy.float128": CacheType.DATA,
-    "numpy.int_": CacheType.DATA,
-    "numpy.int8": CacheType.DATA,
-    "numpy.int16": CacheType.DATA,
-    "numpy.int32": CacheType.DATA,
-    "numpy.int64": CacheType.DATA,
-    "numpy.intp": CacheType.DATA,
-    "numpy.uint8": CacheType.DATA,
-    "numpy.uint16": CacheType.DATA,
-    "numpy.uint32": CacheType.DATA,
-    "numpy.uint64": CacheType.DATA,
-    "numpy.uintp": CacheType.DATA,
-    "PIL.Image.Image": CacheType.DATA,
-    "plotly.graph_objects.Figure": CacheType.DATA,
-    "matplotlib.figure.Figure": CacheType.DATA,
-    "altair.Chart": CacheType.DATA,
-    # cache_resource recommendations:
-    "pyodbc.Connection": CacheType.RESOURCE,
-    "pymongo.mongo_client.MongoClient": CacheType.RESOURCE,
-    "mysql.connector.MySQLConnection": CacheType.RESOURCE,
-    "psycopg2.connection": CacheType.RESOURCE,
-    "psycopg2.extensions.connection": CacheType.RESOURCE,
-    "snowflake.connector.connection.SnowflakeConnection": CacheType.RESOURCE,
-    "snowflake.snowpark.sessions.Session": CacheType.RESOURCE,
-    "sqlalchemy.engine.base.Engine": CacheType.RESOURCE,
-    "sqlite3.Connection": CacheType.RESOURCE,
-    "torch.nn.Module": CacheType.RESOURCE,
-    "tensorflow.keras.Model": CacheType.RESOURCE,
-    "tensorflow.Module": CacheType.RESOURCE,
-    "tensorflow.compat.v1.Session": CacheType.RESOURCE,
-    "transformers.Pipeline": CacheType.RESOURCE,
-    "transformers.PreTrainedTokenizer": CacheType.RESOURCE,
-    "transformers.PreTrainedTokenizerFast": CacheType.RESOURCE,
-    "transformers.PreTrainedTokenizerBase": CacheType.RESOURCE,
-    "transformers.PreTrainedModel": CacheType.RESOURCE,
-    "transformers.TFPreTrainedModel": CacheType.RESOURCE,
-    "transformers.FlaxPreTrainedModel": CacheType.RESOURCE,
-}
-
-
-def _make_deprecation_warning(cached_value: Any) -> str:
-    """Build a deprecation warning string for a cache function that has returned the given
-    value.
-    """
-    typename = type(cached_value).__qualname__
-    cache_type_rec = NEW_CACHE_FUNC_RECOMMENDATIONS.get(typename)
-    if cache_type_rec is not None:
-        # We have a recommended cache func for the cached value:
-        return (
-            f"`st.cache` is deprecated. Please use one of Streamlit's new caching commands,\n"
-            f"`st.cache_data` or `st.cache_resource`. Based on this function's return value\n"
-            f"of type `{typename}`, we recommend using `st.{get_decorator_api_name(cache_type_rec)}`.\n\n"
-            f"More information [in our docs]({CACHE_DOCS_URL})."
-        )
-
-    # We do not have a recommended cache func for the cached value:
-    return (
-        f"`st.cache` is deprecated. Please use one of Streamlit's new caching commands,\n"
-        f"`st.cache_data` or `st.cache_resource`.\n\n"
-        f"More information [in our docs]({CACHE_DOCS_URL})."
-    )
 
 
 @dataclass
@@ -155,7 +79,7 @@ class _MemCaches(CacheStatsProvider):
     def __init__(self):
         # Contains a cache object for each st.cache'd function
         self._lock = threading.RLock()
-        self._function_caches: dict[str, MemCache] = {}
+        self._function_caches: Dict[str, MemCache] = {}
 
     def __repr__(self) -> str:
         return util.repr_(self)
@@ -163,8 +87,8 @@ class _MemCaches(CacheStatsProvider):
     def get_cache(
         self,
         key: str,
-        max_entries: float | None,
-        ttl: float | None,
+        max_entries: Optional[float],
+        ttl: Optional[float],
         display_name: str = "",
     ) -> MemCache:
         """Return the mem cache for the given key.
@@ -210,14 +134,11 @@ class _MemCaches(CacheStatsProvider):
         with self._lock:
             self._function_caches = {}
 
-    def get_stats(self) -> list[CacheStat]:
+    def get_stats(self) -> List[CacheStat]:
         with self._lock:
             # Shallow-clone our caches. We don't want to hold the global
             # lock during stats-gathering.
             function_caches = self._function_caches.copy()
-
-        # Lazy-load vendored package to prevent import of numpy
-        from streamlit.vendor.pympler.asizeof import asizeof
 
         stats = [
             CacheStat("st_cache", cache.display_name, asizeof(c))
@@ -235,7 +156,7 @@ _mem_caches = _MemCaches()
 # and decremented when we exit.
 class ThreadLocalCacheInfo(threading.local):
     def __init__(self):
-        self.cached_func_stack: list[Callable[..., Any]] = []
+        self.cached_func_stack: List[Callable[..., Any]] = []
         self.suppress_st_function_warning = 0
 
     def __repr__(self) -> str:
@@ -265,7 +186,7 @@ def suppress_cached_st_function_warning() -> Iterator[None]:
 
 
 def _show_cached_st_function_warning(
-    dg: st.delta_generator.DeltaGenerator,
+    dg: "st.delta_generator.DeltaGenerator",
     st_func_name: str,
     cached_func: Callable[..., Any],
 ) -> None:
@@ -277,7 +198,7 @@ def _show_cached_st_function_warning(
 
 
 def maybe_show_cached_st_function_warning(
-    dg: st.delta_generator.DeltaGenerator, st_func_name: str
+    dg: "st.delta_generator.DeltaGenerator", st_func_name: str
 ) -> None:
     """If appropriate, warn about calling st.foo inside @cache.
 
@@ -307,7 +228,7 @@ def _read_from_mem_cache(
     key: str,
     allow_output_mutation: bool,
     func_or_code: Callable[..., Any],
-    hash_funcs: HashFuncsDict | None,
+    hash_funcs: Optional[HashFuncsDict],
 ) -> Any:
     cache = mem_cache.cache
     if key in cache:
@@ -337,7 +258,7 @@ def _write_to_mem_cache(
     value: Any,
     allow_output_mutation: bool,
     func_or_code: Callable[..., Any],
-    hash_funcs: HashFuncsDict | None,
+    hash_funcs: Optional[HashFuncsDict],
 ) -> None:
     if allow_output_mutation:
         hash = None
@@ -349,9 +270,9 @@ def _write_to_mem_cache(
 
 
 def _get_output_hash(
-    value: Any, func_or_code: Callable[..., Any], hash_funcs: HashFuncsDict | None
+    value: Any, func_or_code: Callable[..., Any], hash_funcs: Optional[HashFuncsDict]
 ) -> bytes:
-    hasher = hashlib.new("md5", **HASHLIB_KWARGS)
+    hasher = hashlib.new("md5")
     update_hash(
         value,
         hasher=hasher,
@@ -390,7 +311,7 @@ def _write_to_disk_cache(key: str, value: Any) -> None:
         # Clean up file so we don't leave zero byte files.
         try:
             os.remove(path)
-        except (FileNotFoundError, OSError):
+        except (FileNotFoundError, IOError, OSError):
             # If we can't remove the file, it's not a big deal.
             pass
         raise CacheError("Unable to write to cache: %s" % e)
@@ -402,7 +323,7 @@ def _read_from_cache(
     persist: bool,
     allow_output_mutation: bool,
     func_or_code: Callable[..., Any],
-    hash_funcs: HashFuncsDict | None = None,
+    hash_funcs: Optional[HashFuncsDict] = None,
 ) -> Any:
     """Read a value from the cache.
 
@@ -437,7 +358,7 @@ def _write_to_cache(
     persist: bool,
     allow_output_mutation: bool,
     func_or_code: Callable[..., Any],
-    hash_funcs: HashFuncsDict | None = None,
+    hash_funcs: Optional[HashFuncsDict] = None,
 ):
     _write_to_mem_cache(
         mem_cache, key, value, allow_output_mutation, func_or_code, hash_funcs
@@ -456,9 +377,9 @@ def cache(
     allow_output_mutation: bool = False,
     show_spinner: bool = True,
     suppress_st_warning: bool = False,
-    hash_funcs: HashFuncsDict | None = None,
-    max_entries: int | None = None,
-    ttl: float | None = None,
+    hash_funcs: Optional[HashFuncsDict] = None,
+    max_entries: Optional[int] = None,
+    ttl: Optional[float] = None,
 ) -> F:
     ...
 
@@ -470,23 +391,23 @@ def cache(
     allow_output_mutation: bool = False,
     show_spinner: bool = True,
     suppress_st_warning: bool = False,
-    hash_funcs: HashFuncsDict | None = None,
-    max_entries: int | None = None,
-    ttl: float | None = None,
+    hash_funcs: Optional[HashFuncsDict] = None,
+    max_entries: Optional[int] = None,
+    ttl: Optional[float] = None,
 ) -> Callable[[F], F]:
     ...
 
 
 def cache(
-    func: F | None = None,
+    func: Optional[F] = None,
     persist: bool = False,
     allow_output_mutation: bool = False,
     show_spinner: bool = True,
     suppress_st_warning: bool = False,
-    hash_funcs: HashFuncsDict | None = None,
-    max_entries: int | None = None,
-    ttl: float | None = None,
-) -> Callable[[F], F] | F:
+    hash_funcs: Optional[HashFuncsDict] = None,
+    max_entries: Optional[int] = None,
+    ttl: Optional[float] = None,
+) -> Union[Callable[[F], F], F]:
     """Function decorator to memoize function executions.
 
     Parameters
@@ -494,20 +415,20 @@ def cache(
     func : callable
         The function to cache. Streamlit hashes the function and dependent code.
 
-    persist : bool
+    persist : boolean
         Whether to persist the cache on disk.
 
-    allow_output_mutation : bool
+    allow_output_mutation : boolean
         Streamlit shows a warning when return values are mutated, as that
         can have unintended consequences. This is done by hashing the return value internally.
 
         If you know what you're doing and would like to override this warning, set this to True.
 
-    show_spinner : bool
+    show_spinner : boolean
         Enable the spinner. Default is True to show a spinner when there is
         a cache miss.
 
-    suppress_st_warning : bool
+    suppress_st_warning : boolean
         Suppress warnings about calling Streamlit commands from within
         the cached function.
 
@@ -529,8 +450,6 @@ def cache(
 
     Example
     -------
-    >>> import streamlit as st
-    >>>
     >>> @st.cache
     ... def fetch_and_clean_data(url):
     ...     # Fetch data from URL here, and then clean it up.
@@ -604,10 +523,9 @@ def cache(
 
     @functools.wraps(non_optional_func)
     def wrapped_func(*args, **kwargs):
-        """Wrapper function that only calls the underlying function on a cache miss.
-
-        Cached objects are stored in the cache/ directory.
-        """
+        """This function wrapper will only call the underlying function in
+        the case of a cache miss. Cached objects are stored in the cache/
+        directory."""
 
         if not config.get_option("client.caching"):
             _LOGGER.debug("Purposefully skipping cache")
@@ -664,7 +582,7 @@ def cache(
 
             # Avoid recomputing the body's hash by just appending the
             # previously-computed hash to the arg hash.
-            value_key = "{}-{}".format(value_key, cache_key)
+            value_key = "%s-%s" % (value_key, cache_key)
 
             _LOGGER.debug("Cache key: %s", value_key)
 
@@ -699,13 +617,10 @@ def cache(
                     hash_funcs=hash_funcs,
                 )
 
-            # st.cache is deprecated. We show a warning every time it's used.
-            show_deprecation_warning(_make_deprecation_warning(return_value))
-
             return return_value
 
         if show_spinner:
-            with spinner(message, _cache=True):
+            with spinner(message):
                 return get_or_create_cached_value()
         else:
             return get_or_create_cached_value()
@@ -721,7 +636,7 @@ def cache(
     return cast(F, wrapped_func)
 
 
-def _hash_func(func: Callable[..., Any], hash_funcs: HashFuncsDict | None) -> str:
+def _hash_func(func: Callable[..., Any], hash_funcs: Optional[HashFuncsDict]) -> str:
     # Create the unique key for a function's cache. The cache will be retrieved
     # from inside the wrapped function.
     #
@@ -812,8 +727,10 @@ class CacheKeyNotFoundError(Exception):
 
 
 class CachedObjectMutationError(ValueError):
-    # This is used internally, but never shown to the user.
-    # Users see CachedObjectMutationWarning instead.
+    """This is used internally, but never shown to the user.
+
+    Users see CachedObjectMutationWarning instead.
+    """
 
     def __init__(self, cached_value, func_or_code):
         self.cached_value = cached_value
@@ -829,7 +746,7 @@ class CachedObjectMutationError(ValueError):
 class CachedStFunctionWarning(StreamlitAPIWarning):
     def __init__(self, st_func_name, cached_func):
         msg = self._get_message(st_func_name, cached_func)
-        super().__init__(msg)
+        super(CachedStFunctionWarning, self).__init__(msg)
 
     def _get_message(self, st_func_name, cached_func):
         args = {
@@ -855,7 +772,7 @@ to suppress the warning.
 class CachedObjectMutationWarning(StreamlitAPIWarning):
     def __init__(self, orig_exc):
         msg = self._get_message(orig_exc)
-        super().__init__(msg)
+        super(CachedObjectMutationWarning, self).__init__(msg)
 
     def _get_message(self, orig_exc):
         return (

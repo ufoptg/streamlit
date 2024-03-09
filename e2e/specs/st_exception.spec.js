@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,22 +17,12 @@
 describe("st.exception", () => {
   before(() => {
     cy.loadApp("http://localhost:3000/");
-
-    cy.prepForElementSnapshots();
-
-    // Ensure both exceptions show up before running tests
-    cy.get(".element-container .stException").should("have.length", 2);
   });
 
   it("displays an exception message", () => {
-    cy.get(".element-container .stException")
-      .eq(0)
-      .should("contain", "This exception message is awesome!");
-  });
-
-  it("displays a long exception message properly", () => {
-    cy.get(".element-container .stException")
-      .eq(1)
-      .matchThemedSnapshots("long_exception");
+    cy.get(".element-container .stException").should(
+      "contain",
+      "This exception message is awesome!"
+    );
   });
 });

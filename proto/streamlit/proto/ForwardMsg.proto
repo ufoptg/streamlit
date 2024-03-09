@@ -1,5 +1,5 @@
 /**!
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,6 @@
 
 syntax = "proto3";
 
-option java_package = "com.snowflake.apps.streamlit";
-option java_outer_classname = "ForwardMsgProto";
-
-import "streamlit/proto/Common.proto";
 import "streamlit/proto/Delta.proto";
 import "streamlit/proto/GitInfo.proto";
 import "streamlit/proto/NewSession.proto";
@@ -28,9 +24,8 @@ import "streamlit/proto/PageInfo.proto";
 import "streamlit/proto/PageProfile.proto";
 import "streamlit/proto/PageNotFound.proto";
 import "streamlit/proto/PagesChanged.proto";
-import "streamlit/proto/ParentMessage.proto";
 import "streamlit/proto/SessionEvent.proto";
-import "streamlit/proto/SessionStatus.proto";
+import "streamlit/proto/SessionState.proto";
 
 // A message sent from Proxy to the browser
 message ForwardMsg {
@@ -63,17 +58,13 @@ message ForwardMsg {
     GitInfo git_info_changed = 14;
     PageProfile page_profile = 18;
 
-    // Status change and event messages.
-    SessionStatus session_status_changed = 9;
+    // State change and event messages.
+    SessionState session_state_changed = 9;
     SessionEvent session_event = 10;
 
     // Other messages.
     PageNotFound page_not_found = 15;
     PagesChanged pages_changed = 16;
-    FileURLsResponse file_urls_response = 19;
-
-    // Platform - message to host
-    ParentMessage parent_message = 20;
 
     // A reference to a ForwardMsg that has already been delivered.
     // The client should substitute the message with the given hash
@@ -88,7 +79,7 @@ message ForwardMsg {
   string debug_last_backmsg_id = 17;
 
   reserved 7, 8;
-  // Next: 21
+  // Next: 19
 }
 
 // ForwardMsgMetadata contains all data that does _not_ get hashed (or cached)
@@ -105,11 +96,9 @@ message ForwardMsgMetadata {
   // Only set for Delta messages.
   repeated uint32 delta_path = 2;
 
-  // DEPRECATED: This is not used anymore.
   ElementDimensionSpec element_dimension_spec = 3;
 }
 
-// DEPRECATED: This is not used anymore.
 // Specifies the dimensions for the element
 message ElementDimensionSpec {
   // width in CSS points

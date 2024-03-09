@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,48 +14,48 @@
 
 """Allows us to create and absorb changes (aka Deltas) to elements."""
 
-from __future__ import annotations
-
 import sys
-from contextvars import ContextVar
-from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Final,
+    Dict,
     Hashable,
     Iterable,
-    Literal,
     NoReturn,
+    Optional,
+    Tuple,
+    Type,
     TypeVar,
+    Union,
     cast,
     overload,
 )
 
-from streamlit import (
-    cli_util,
-    config,
-    cursor,
-    env_util,
-    logger,
-    runtime,
-    type_util,
-    util,
-)
+import click
+from typing_extensions import Final, Literal
+
+from streamlit import config, cursor, env_util, logger, runtime, type_util, util
 from streamlit.cursor import Cursor
 from streamlit.elements.alert import AlertMixin
-from streamlit.elements.altair_utils import AddRowsMetadata
+
+# DataFrame elements come in two flavors: "Legacy" and "Arrow".
+# We select between them with the DataFrameElementSelectorMixin.
 from streamlit.elements.arrow import ArrowMixin
-from streamlit.elements.arrow_altair import ArrowAltairMixin, prep_data
+from streamlit.elements.arrow_altair import ArrowAltairMixin
 from streamlit.elements.arrow_vega_lite import ArrowVegaLiteMixin
 from streamlit.elements.balloons import BalloonsMixin
 from streamlit.elements.bokeh_chart import BokehMixin
-from streamlit.elements.code import CodeMixin
+from streamlit.elements.button import ButtonMixin
+from streamlit.elements.camera_input import CameraInputMixin
+from streamlit.elements.checkbox import CheckboxMixin
+from streamlit.elements.color_picker import ColorPickerMixin
+from streamlit.elements.dataframe_selector import DataFrameSelectorMixin
 from streamlit.elements.deck_gl_json_chart import PydeckMixin
 from streamlit.elements.doc_string import HelpMixin
 from streamlit.elements.empty import EmptyMixin
 from streamlit.elements.exception import ExceptionMixin
+from streamlit.elements.file_uploader import FileUploaderMixin
 from streamlit.elements.form import FormData, FormMixin, current_form_id
 from streamlit.elements.graphviz_chart import GraphvizMixin
 from streamlit.elements.heading import HeadingMixin
@@ -63,33 +63,29 @@ from streamlit.elements.iframe import IframeMixin
 from streamlit.elements.image import ImageMixin
 from streamlit.elements.json import JsonMixin
 from streamlit.elements.layouts import LayoutsMixin
+from streamlit.elements.legacy_altair import LegacyAltairMixin
+from streamlit.elements.legacy_data_frame import LegacyDataFrameMixin
+from streamlit.elements.legacy_vega_lite import LegacyVegaLiteMixin
 from streamlit.elements.map import MapMixin
 from streamlit.elements.markdown import MarkdownMixin
 from streamlit.elements.media import MediaMixin
 from streamlit.elements.metric import MetricMixin
+from streamlit.elements.multiselect import MultiSelectMixin
+from streamlit.elements.number_input import NumberInputMixin
 from streamlit.elements.plotly_chart import PlotlyMixin
 from streamlit.elements.progress import ProgressMixin
 from streamlit.elements.pyplot import PyplotMixin
+from streamlit.elements.radio import RadioMixin
+from streamlit.elements.select_slider import SelectSliderMixin
+from streamlit.elements.selectbox import SelectboxMixin
+from streamlit.elements.slider import SliderMixin
 from streamlit.elements.snow import SnowMixin
 from streamlit.elements.text import TextMixin
-from streamlit.elements.toast import ToastMixin
-from streamlit.elements.widgets.button import ButtonMixin
-from streamlit.elements.widgets.camera_input import CameraInputMixin
-from streamlit.elements.widgets.chat import ChatMixin
-from streamlit.elements.widgets.checkbox import CheckboxMixin
-from streamlit.elements.widgets.color_picker import ColorPickerMixin
-from streamlit.elements.widgets.data_editor import DataEditorMixin
-from streamlit.elements.widgets.file_uploader import FileUploaderMixin
-from streamlit.elements.widgets.multiselect import MultiSelectMixin
-from streamlit.elements.widgets.number_input import NumberInputMixin
-from streamlit.elements.widgets.radio import RadioMixin
-from streamlit.elements.widgets.select_slider import SelectSliderMixin
-from streamlit.elements.widgets.selectbox import SelectboxMixin
-from streamlit.elements.widgets.slider import SliderMixin
-from streamlit.elements.widgets.text_widgets import TextWidgetsMixin
-from streamlit.elements.widgets.time_widgets import TimeWidgetsMixin
+from streamlit.elements.text_widgets import TextWidgetsMixin
+from streamlit.elements.time_widgets import TimeWidgetsMixin
 from streamlit.elements.write import WriteMixin
 from streamlit.errors import NoSessionContext, StreamlitAPIException
+from streamlit.logger import get_logger
 from streamlit.proto import Block_pb2, ForwardMsg_pb2
 from streamlit.proto.RootContainer_pb2 import RootContainer
 from streamlit.runtime import caching, legacy_caching
@@ -104,23 +100,21 @@ if TYPE_CHECKING:
     from streamlit.elements.arrow import Data
 
 
+LOGGER: Final = get_logger(__name__)
+
 MAX_DELTA_BYTES: Final[int] = 14 * 1024 * 1024  # 14MB
 
 # List of Streamlit commands that perform a Pandas "melt" operation on
-# input dataframes:
+# input dataframes.
+DELTA_TYPES_THAT_MELT_DATAFRAMES: Final = ("line_chart", "area_chart", "bar_chart")
 ARROW_DELTA_TYPES_THAT_MELT_DATAFRAMES: Final = (
     "arrow_line_chart",
     "arrow_area_chart",
     "arrow_bar_chart",
-    "arrow_scatter_chart",
 )
 
 Value = TypeVar("Value")
 DG = TypeVar("DG", bound="DeltaGenerator")
-
-# Type aliases for Parent Block Types
-BlockType = str
-ParentBlockTypes = Iterable[BlockType]
 
 
 _use_warning_has_been_displayed: bool = False
@@ -135,7 +129,7 @@ def _maybe_print_use_warning() -> None:
     if not _use_warning_has_been_displayed:
         _use_warning_has_been_displayed = True
 
-        warning = cli_util.style_for_cli("Warning:", bold=True, fg="yellow")
+        warning = click.style("Warning:", bold=True, fg="yellow")
 
         if env_util.is_repl():
             logger.get_logger("root").warning(
@@ -158,9 +152,7 @@ class DeltaGenerator(
     BokehMixin,
     ButtonMixin,
     CameraInputMixin,
-    ChatMixin,
     CheckboxMixin,
-    CodeMixin,
     ColorPickerMixin,
     EmptyMixin,
     ExceptionMixin,
@@ -191,12 +183,14 @@ class DeltaGenerator(
     TextMixin,
     TextWidgetsMixin,
     TimeWidgetsMixin,
-    ToastMixin,
     WriteMixin,
     ArrowMixin,
     ArrowAltairMixin,
     ArrowVegaLiteMixin,
-    DataEditorMixin,
+    LegacyDataFrameMixin,
+    LegacyAltairMixin,
+    LegacyVegaLiteMixin,
+    DataFrameSelectorMixin,
 ):
     """Creator of Delta protobuf messages.
 
@@ -231,10 +225,10 @@ class DeltaGenerator(
     # those, see above.
     def __init__(
         self,
-        root_container: int | None = RootContainer.MAIN,
-        cursor: Cursor | None = None,
-        parent: DeltaGenerator | None = None,
-        block_type: str | None = None,
+        root_container: Optional[int] = RootContainer.MAIN,
+        cursor: Optional[Cursor] = None,
+        parent: Optional["DeltaGenerator"] = None,
+        block_type: Optional[str] = None,
     ) -> None:
         """Inserts or updates elements in Streamlit apps.
 
@@ -273,12 +267,12 @@ class DeltaGenerator(
         self._block_type = block_type
 
         # If this an `st.form` block, this will get filled in.
-        self._form_data: FormData | None = None
+        self._form_data: Optional[FormData] = None
 
         # Change the module of all mixin'ed functions to be st.delta_generator,
         # instead of the original module (e.g. st.elements.markdown)
         for mixin in self.__class__.__bases__:
-            for _, func in mixin.__dict__.items():
+            for (name, func) in mixin.__dict__.items():
                 if callable(func):
                     func.__module__ = self.__module__
 
@@ -287,7 +281,9 @@ class DeltaGenerator(
 
     def __enter__(self) -> None:
         # with block started
-        dg_stack.set(dg_stack.get() + (self,))
+        ctx = get_script_run_ctx()
+        if ctx:
+            ctx.dg_stack.append(self)
 
     def __exit__(
         self,
@@ -296,14 +292,15 @@ class DeltaGenerator(
         traceback: Any,
     ) -> Literal[False]:
         # with block ended
-
-        dg_stack.set(dg_stack.get()[:-1])
+        ctx = get_script_run_ctx()
+        if ctx is not None:
+            ctx.dg_stack.pop()
 
         # Re-raise any exceptions
         return False
 
     @property
-    def _active_dg(self) -> DeltaGenerator:
+    def _active_dg(self) -> "DeltaGenerator":
         """Return the DeltaGenerator that's currently 'active'.
         If we are the main DeltaGenerator, and are inside a `with` block that
         creates a container, our active_dg is that container. Otherwise,
@@ -312,16 +309,16 @@ class DeltaGenerator(
         if self == self._main_dg:
             # We're being invoked via an `st.foo` pattern - use the current
             # `with` dg (aka the top of the stack).
-            current_stack = dg_stack.get()
-            if len(current_stack) > 1:
-                return current_stack[-1]
+            ctx = get_script_run_ctx()
+            if ctx and len(ctx.dg_stack) > 0:
+                return ctx.dg_stack[-1]
 
         # We're being invoked via an `st.sidebar.foo` pattern - ignore the
         # current `with` dg.
         return self
 
     @property
-    def _main_dg(self) -> DeltaGenerator:
+    def _main_dg(self) -> "DeltaGenerator":
         """Return this DeltaGenerator's root - that is, the top-level ancestor
         DeltaGenerator that we belong to (this generally means the st._main
         DeltaGenerator).
@@ -339,48 +336,37 @@ class DeltaGenerator(
             if name in streamlit_methods:
                 if self._root_container == RootContainer.SIDEBAR:
                     message = (
-                        f"Method `{name}()` does not exist for "
-                        f"`st.sidebar`. Did you mean `st.{name}()`?"
+                        "Method `%(name)s()` does not exist for "
+                        "`st.sidebar`. Did you mean `st.%(name)s()`?" % {"name": name}
                     )
                 else:
                     message = (
-                        f"Method `{name}()` does not exist for "
+                        "Method `%(name)s()` does not exist for "
                         "`DeltaGenerator` objects. Did you mean "
-                        "`st.{name}()`?"
+                        "`st.%(name)s()`?" % {"name": name}
                     )
             else:
-                message = f"`{name}()` is not a valid Streamlit command."
+                message = "`%(name)s()` is not a valid Streamlit command." % {
+                    "name": name
+                }
 
             raise StreamlitAPIException(message)
 
         return wrapper
 
-    def __deepcopy__(self, _memo):
-        dg = DeltaGenerator(
-            root_container=self._root_container,
-            cursor=deepcopy(self._cursor),
-            parent=deepcopy(self._parent),
-            block_type=self._block_type,
-        )
-        dg._form_data = deepcopy(self._form_data)
-        return dg
-
     @property
-    def _parent_block_types(self) -> ParentBlockTypes:
+    def _parent_block_types(self) -> Iterable[str]:
         """Iterate all the block types used by this DeltaGenerator and all
         its ancestor DeltaGenerators.
         """
-        current_dg: DeltaGenerator | None = self
+        current_dg: Optional[DeltaGenerator] = self
         while current_dg is not None:
             if current_dg._block_type is not None:
                 yield current_dg._block_type
             current_dg = current_dg._parent
 
-    def _count_num_of_parent_columns(self, parent_block_types: ParentBlockTypes) -> int:
-        return sum(1 for parent_block in parent_block_types if parent_block == "column")
-
     @property
-    def _cursor(self) -> Cursor | None:
+    def _cursor(self) -> Optional[Cursor]:
         """Return our Cursor. This will be None if we're not running in a
         ScriptThread - e.g., if we're running a "bare" script outside of
         Streamlit.
@@ -413,38 +399,38 @@ class DeltaGenerator(
         return str(dg._cursor.delta_path) if dg._cursor is not None else "[]"
 
     @overload
-    def _enqueue(
+    def _enqueue(  # type: ignore[misc]
         self,
         delta_type: str,
-        element_proto: Message,
+        element_proto: "Message",
         return_value: None,
-        add_rows_metadata: AddRowsMetadata | None = None,
-        element_width: int | None = None,
-        element_height: int | None = None,
-    ) -> DeltaGenerator:
+        last_index: Optional[Hashable] = None,
+        element_width: Optional[int] = None,
+        element_height: Optional[int] = None,
+    ) -> "DeltaGenerator":
         ...
 
     @overload
     def _enqueue(  # type: ignore[misc]
         self,
         delta_type: str,
-        element_proto: Message,
-        return_value: type[NoValue],
-        add_rows_metadata: AddRowsMetadata | None = None,
-        element_width: int | None = None,
-        element_height: int | None = None,
+        element_proto: "Message",
+        return_value: Type[NoValue],
+        last_index: Optional[Hashable] = None,
+        element_width: Optional[int] = None,
+        element_height: Optional[int] = None,
     ) -> None:
         ...
 
     @overload
-    def _enqueue(
+    def _enqueue(  # type: ignore[misc]
         self,
         delta_type: str,
-        element_proto: Message,
+        element_proto: "Message",
         return_value: Value,
-        add_rows_metadata: AddRowsMetadata | None = None,
-        element_width: int | None = None,
-        element_height: int | None = None,
+        last_index: Optional[Hashable] = None,
+        element_width: Optional[int] = None,
+        element_height: Optional[int] = None,
     ) -> Value:
         ...
 
@@ -452,44 +438,44 @@ class DeltaGenerator(
     def _enqueue(
         self,
         delta_type: str,
-        element_proto: Message,
+        element_proto: "Message",
         return_value: None = None,
-        add_rows_metadata: AddRowsMetadata | None = None,
-        element_width: int | None = None,
-        element_height: int | None = None,
-    ) -> DeltaGenerator:
+        last_index: Optional[Hashable] = None,
+        element_width: Optional[int] = None,
+        element_height: Optional[int] = None,
+    ) -> "DeltaGenerator":
         ...
 
     @overload
     def _enqueue(
         self,
         delta_type: str,
-        element_proto: Message,
-        return_value: type[NoValue] | Value | None = None,
-        add_rows_metadata: AddRowsMetadata | None = None,
-        element_width: int | None = None,
-        element_height: int | None = None,
-    ) -> DeltaGenerator | Value | None:
+        element_proto: "Message",
+        return_value: Union[None, Type[NoValue], Value] = None,
+        last_index: Optional[Hashable] = None,
+        element_width: Optional[int] = None,
+        element_height: Optional[int] = None,
+    ) -> Union["DeltaGenerator", None, Value]:
         ...
 
     def _enqueue(
         self,
         delta_type: str,
-        element_proto: Message,
-        return_value: type[NoValue] | Value | None = None,
-        add_rows_metadata: AddRowsMetadata | None = None,
-        element_width: int | None = None,
-        element_height: int | None = None,
-    ) -> DeltaGenerator | Value | None:
+        element_proto: "Message",
+        return_value: Union[None, Type[NoValue], Value] = None,
+        last_index: Optional[Hashable] = None,
+        element_width: Optional[int] = None,
+        element_height: Optional[int] = None,
+    ) -> Union["DeltaGenerator", None, Value]:
         """Create NewElement delta, fill it, and enqueue it.
 
         Parameters
         ----------
-        delta_type : str
+        delta_type: string
             The name of the streamlit method being called
-        element_proto : proto
+        element_proto: proto
             The actual proto in the NewElement type e.g. Alert/Button/Slider
-        return_value : any or None
+        return_value: any or None
             The value to return to the calling script (for widgets)
         element_width : int or None
             Desired width for the element
@@ -520,7 +506,10 @@ class DeltaGenerator(
         # since add_rows() relies on method.__name__ == delta_type
         # TODO: Fix for all elements (or the cache warning above will be wrong)
         proto_type = delta_type
+        if proto_type in DELTA_TYPES_THAT_MELT_DATAFRAMES:
+            proto_type = "vega_lite_chart"
 
+        # Mirror the logic for arrow_ elements.
         if proto_type in ARROW_DELTA_TYPES_THAT_MELT_DATAFRAMES:
             proto_type = "arrow_vega_lite_chart"
 
@@ -547,7 +536,7 @@ class DeltaGenerator(
             # position.
             new_cursor = (
                 dg._cursor.get_locked_cursor(
-                    delta_type=delta_type, add_rows_metadata=add_rows_metadata
+                    delta_type=delta_type, last_index=last_index
                 )
                 if dg._cursor is not None
                 else None
@@ -577,42 +566,21 @@ class DeltaGenerator(
     def _block(
         self,
         block_proto: Block_pb2.Block = Block_pb2.Block(),
-        dg_type: type | None = None,
-    ) -> DeltaGenerator:
+    ) -> "DeltaGenerator":
         # Operate on the active DeltaGenerator, in case we're in a `with` block.
         dg = self._active_dg
 
         # Prevent nested columns & expanders by checking all parents.
         block_type = block_proto.WhichOneof("type")
         # Convert the generator to a list, so we can use it multiple times.
-        parent_block_types = list(dg._parent_block_types)
-
-        if block_type == "column":
-            num_of_parent_columns = self._count_num_of_parent_columns(
-                parent_block_types
-            )
-            if (
-                self._root_container == RootContainer.SIDEBAR
-                and num_of_parent_columns > 0
-            ):
-                raise StreamlitAPIException(
-                    "Columns cannot be placed inside other columns in the sidebar. This is only possible in the main area of the app."
-                )
-            if num_of_parent_columns > 1:
-                raise StreamlitAPIException(
-                    "Columns can only be placed inside other columns up to one level of nesting."
-                )
-        if block_type == "chat_message" and block_type in frozenset(parent_block_types):
+        parent_block_types = frozenset(dg._parent_block_types)
+        if block_type == "column" and block_type in parent_block_types:
             raise StreamlitAPIException(
-                "Chat messages cannot nested inside other chat messages."
+                "Columns may not be nested inside other columns."
             )
-        if block_type == "expandable" and block_type in frozenset(parent_block_types):
+        if block_type == "expandable" and block_type in parent_block_types:
             raise StreamlitAPIException(
                 "Expanders may not be nested inside other expanders."
-            )
-        if block_type == "popover" and block_type in frozenset(parent_block_types):
-            raise StreamlitAPIException(
-                "Popovers may not be nested inside other popovers."
             )
 
         if dg._root_container is None or dg._cursor is None:
@@ -629,27 +597,18 @@ class DeltaGenerator(
             root_container=dg._root_container,
             parent_path=dg._cursor.parent_path + (dg._cursor.index,),
         )
-
-        # `dg_type` param added for st.status container. It allows us to
-        # instantiate DeltaGenerator subclasses from the function.
-        if dg_type is None:
-            dg_type = DeltaGenerator
-
-        block_dg = cast(
-            DeltaGenerator,
-            dg_type(
-                root_container=dg._root_container,
-                cursor=block_cursor,
-                parent=dg,
-                block_type=block_type,
-            ),
+        block_dg = DeltaGenerator(
+            root_container=dg._root_container,
+            cursor=block_cursor,
+            parent=dg,
+            block_type=block_type,
         )
         # Blocks inherit their parent form ids.
         # NOTE: Container form ids aren't set in proto.
         block_dg._form_data = FormData(current_form_id(dg))
 
         # Must be called to increment this cursor's index.
-        dg._cursor.get_locked_cursor(add_rows_metadata=None)
+        dg._cursor.get_locked_cursor(last_index=None)
         _enqueue_message(msg)
 
         caching.save_block_message(
@@ -661,15 +620,124 @@ class DeltaGenerator(
 
         return block_dg
 
+    def _legacy_add_rows(
+        self: DG,
+        data: "Data" = None,
+        **kwargs: Union[
+            "DataFrame", "npt.NDArray[Any]", Iterable[Any], Dict[Hashable, Any], None
+        ],
+    ) -> Optional[DG]:
+        """Concatenate a dataframe to the bottom of the current one.
+
+        Parameters
+        ----------
+        data : pandas.DataFrame, pandas.Styler, numpy.ndarray, Iterable, dict,
+        or None
+            Table to concat. Optional.
+
+        **kwargs : pandas.DataFrame, numpy.ndarray, Iterable, dict, or None
+            The named dataset to concat. Optional. You can only pass in 1
+            dataset (including the one in the data parameter).
+
+        Example
+        -------
+        >>> df1 = pd.DataFrame(
+        ...    np.random.randn(50, 20),
+        ...    columns=('col %d' % i for i in range(20)))
+        ...
+        >>> my_table = st._legacy_table(df1)
+        >>>
+        >>> df2 = pd.DataFrame(
+        ...    np.random.randn(50, 20),
+        ...    columns=('col %d' % i for i in range(20)))
+        ...
+        >>> my_table._legacy_add_rows(df2)
+        >>> # Now the table shown in the Streamlit app contains the data for
+        >>> # df1 followed by the data for df2.
+
+        You can do the same thing with plots. For example, if you want to add
+        more data to a line chart:
+
+        >>> # Assuming df1 and df2 from the example above still exist...
+        >>> my_chart = st._legacy_line_chart(df1)
+        >>> my_chart._legacy_add_rows(df2)
+        >>> # Now the chart shown in the Streamlit app contains the data for
+        >>> # df1 followed by the data for df2.
+
+        And for plots whose datasets are named, you can pass the data with a
+        keyword argument where the key is the name:
+
+        >>> my_chart = st._legacy_vega_lite_chart({
+        ...     'mark': 'line',
+        ...     'encoding': {'x': 'a', 'y': 'b'},
+        ...     'datasets': {
+        ...       'some_fancy_name': df1,  # <-- named dataset
+        ...      },
+        ...     'data': {'name': 'some_fancy_name'},
+        ... }),
+        >>> my_chart._legacy_add_rows(some_fancy_name=df2)  # <-- name used as keyword
+
+        """
+        if self._root_container is None or self._cursor is None:
+            return self
+
+        if not self._cursor.is_locked:
+            raise StreamlitAPIException("Only existing elements can `add_rows`.")
+
+        # Accept syntax st._legacy_add_rows(df).
+        if data is not None and len(kwargs) == 0:
+            name = ""
+        # Accept syntax st._legacy_add_rows(foo=df).
+        elif len(kwargs) == 1:
+            name, data = kwargs.popitem()
+        # Raise error otherwise.
+        else:
+            raise StreamlitAPIException(
+                "Wrong number of arguments to add_rows()."
+                "Command requires exactly one dataset"
+            )
+
+        # When doing _legacy_add_rows on an element that does not already have data
+        # (for example, st._legacy_line_chart() without any args), call the original
+        # st._legacy_foo() element with new data instead of doing a _legacy_add_rows().
+        if (
+            self._cursor.props["delta_type"] in DELTA_TYPES_THAT_MELT_DATAFRAMES
+            and self._cursor.props["last_index"] is None
+        ):
+            # IMPORTANT: This assumes delta types and st method names always
+            # match!
+            # delta_type doesn't have any prefix, but st_method_name starts with "_legacy_".
+            st_method_name = "_legacy_" + self._cursor.props["delta_type"]
+            st_method = getattr(self, st_method_name)
+            st_method(data, **kwargs)
+            return None
+
+        data, self._cursor.props["last_index"] = _maybe_melt_data_for_add_rows(
+            data, self._cursor.props["delta_type"], self._cursor.props["last_index"]
+        )
+
+        msg = ForwardMsg_pb2.ForwardMsg()
+        msg.metadata.delta_path[:] = self._cursor.delta_path
+
+        import streamlit.elements.legacy_data_frame as data_frame
+
+        data_frame.marshall_data_frame(data, msg.delta.add_rows.data)
+
+        if name:
+            msg.delta.add_rows.name = name
+            msg.delta.add_rows.has_name = True
+
+        _enqueue_message(msg)
+
+        return self
+
     def _arrow_add_rows(
         self: DG,
-        data: Data = None,
-        **kwargs: DataFrame
-        | npt.NDArray[Any]
-        | Iterable[Any]
-        | dict[Hashable, Any]
-        | None,
-    ) -> DG | None:
+        data: "Data" = None,
+        **kwargs: Union[
+            "DataFrame", "npt.NDArray[Any]", Iterable[Any], Dict[Hashable, Any], None
+        ],
+    ) -> Optional[DG]:
         """Concatenate a dataframe to the bottom of the current one.
 
         Parameters
@@ -683,15 +751,11 @@ class DeltaGenerator(
 
         Example
         -------
-        >>> import streamlit as st
-        >>> import pandas as pd
-        >>> import numpy as np
-        >>>
         >>> df1 = pd.DataFrame(
         ...    np.random.randn(50, 20),
         ...    columns=('col %d' % i for i in range(20)))
         ...
-        >>> my_table = st.table(df1)
+        >>> my_table = st._arrow_table(df1)
         >>>
         >>> df2 = pd.DataFrame(
         ...    np.random.randn(50, 20),
@@ -705,7 +769,7 @@ class DeltaGenerator(
         more data to a line chart:
 
         >>> # Assuming df1 and df2 from the example above still exist...
-        >>> my_chart = st.line_chart(df1)
+        >>> my_chart = st._arrow_line_chart(df1)
         >>> my_chart._arrow_add_rows(df2)
         >>> # Now the chart shown in the Streamlit app contains the data for
         >>> # df1 followed by the data for df2.
@@ -744,24 +808,22 @@ class DeltaGenerator(
             )
 
         # When doing _arrow_add_rows on an element that does not already have data
-        # (for example, st.line_chart() without any args), call the original
+        # (for example, st._arrow_line_chart() without any args), call the original
         # st._arrow_foo() element with new data instead of doing a _arrow_add_rows().
         if (
             self._cursor.props["delta_type"] in ARROW_DELTA_TYPES_THAT_MELT_DATAFRAMES
-            and self._cursor.props["add_rows_metadata"].last_index is None
+            and self._cursor.props["last_index"] is None
         ):
             # IMPORTANT: This assumes delta types and st method names always
             # match!
-            # delta_type starts with "arrow_", but st_method_name doesn't use this prefix.
-            st_method_name = self._cursor.props["delta_type"].replace("arrow_", "")
+            # delta_type starts with "arrow_", but st_method_name starts with "_arrow_".
+            st_method_name = "_" + self._cursor.props["delta_type"]
             st_method = getattr(self, st_method_name)
             st_method(data, **kwargs)
             return None
 
-        new_data, self._cursor.props["add_rows_metadata"] = _prep_data_for_add_rows(
-            data,
-            self._cursor.props["delta_type"],
-            self._cursor.props["add_rows_metadata"],
+        data, self._cursor.props["last_index"] = _maybe_melt_data_for_add_rows(
+            data, self._cursor.props["delta_type"], self._cursor.props["last_index"]
         )
 
         msg = ForwardMsg_pb2.ForwardMsg()
@@ -770,7 +832,7 @@ class DeltaGenerator(
         import streamlit.elements.arrow as arrow_proto
 
         default_uuid = str(hash(self._get_delta_path_str()))
-        arrow_proto.marshall(msg.delta.arrow_add_rows.data, new_data, default_uuid)
+        arrow_proto.marshall(msg.delta.arrow_add_rows.data, data, default_uuid)
 
         if name:
             msg.delta.arrow_add_rows.name = name
@@ -781,35 +843,19 @@ class DeltaGenerator(
         return self
 
 
-main_dg = DeltaGenerator(root_container=RootContainer.MAIN)
-sidebar_dg = DeltaGenerator(root_container=RootContainer.SIDEBAR, parent=main_dg)
-event_dg = DeltaGenerator(root_container=RootContainer.EVENT, parent=main_dg)
-bottom_dg = DeltaGenerator(root_container=RootContainer.BOTTOM, parent=main_dg)
-
-# The dg_stack tracks the currently active DeltaGenerator, and is pushed to when
-# a DeltaGenerator is entered via a `with` block. This is implemented as a ContextVar
-# so that different threads or async tasks can have their own stacks.
-dg_stack: ContextVar[tuple[DeltaGenerator, ...]] = ContextVar(
-    "dg_stack", default=(main_dg,)
-)
+DFT = TypeVar("DFT", bound=type_util.DataFrameCompatible)
 
 
-def _prep_data_for_add_rows(
-    data: Data,
+def _maybe_melt_data_for_add_rows(
+    data: DFT,
     delta_type: str,
-    add_rows_metadata: AddRowsMetadata,
-) -> tuple[Data, AddRowsMetadata]:
-    out_data: Data
+    last_index: Any,
+) -> Tuple[Union[DFT, "DataFrame"], Union[int, Any]]:
+    import pandas as pd
 
-    # For some delta types we have to reshape the data structure
-    # otherwise the input data and the actual data used
-    # by vega_lite will be different, and it will throw an error.
-    if delta_type in ARROW_DELTA_TYPES_THAT_MELT_DATAFRAMES:
-        import pandas as pd
-
-        df = cast(pd.DataFrame, type_util.convert_anything_to_df(data))
-
-        # Make range indices start at last_index.
+    def _melt_data(
+        df: "DataFrame", last_index: Any
+    ) -> Tuple["DataFrame", Union[int, Any]]:
         if isinstance(df.index, pd.RangeIndex):
             old_step = _get_pandas_index_attr(df, "step")
 
@@ -823,25 +869,41 @@ def _prep_data_for_add_rows(
                     "'RangeIndex' object has no attribute 'step'"
                 )
 
-            start = add_rows_metadata.last_index + old_step
-            stop = add_rows_metadata.last_index + old_step + old_stop
+            start = last_index + old_step
+            stop = last_index + old_step + old_stop
 
             df.index = pd.RangeIndex(start=start, stop=stop, step=old_step)
-            add_rows_metadata.last_index = stop - 1
+            last_index = stop - 1
 
-        out_data, *_ = prep_data(df, **add_rows_metadata.columns)
+        index_name = df.index.name
+        if index_name is None:
+            index_name = "index"
 
-    else:
-        # When calling add_rows on st.table or st.dataframe we want styles to pass through.
-        out_data = type_util.convert_anything_to_df(data, allow_styler=True)
+        df = pd.melt(df.reset_index(), id_vars=[index_name])
+        return df, last_index
 
-    return out_data, add_rows_metadata
+    # For some delta types we have to reshape the data structure
+    # otherwise the input data and the actual data used
+    # by vega_lite will be different, and it will throw an error.
+    if (
+        delta_type in DELTA_TYPES_THAT_MELT_DATAFRAMES
+        or delta_type in ARROW_DELTA_TYPES_THAT_MELT_DATAFRAMES
+    ):
+        if not isinstance(data, pd.DataFrame):
+            return _melt_data(
+                df=type_util.convert_anything_to_df(data),
+                last_index=last_index,
+            )
+        else:
+            return _melt_data(df=data, last_index=last_index)
+
+    return data, last_index
 
 
 def _get_pandas_index_attr(
-    data: DataFrame | Series,
+    data: "Union[DataFrame, Series]",
     attr: str,
-) -> Any | None:
+) -> Optional[Any]:
     return getattr(data.index, attr, None)
 
 
@@ -851,7 +913,7 @@ def _value_or_dg(value: None, dg: DG) -> DG:
 
 
 @overload
-def _value_or_dg(value: type[NoValue], dg: DG) -> None:  # type: ignore[misc]
+def _value_or_dg(value: Type[NoValue], dg: DG) -> None:  # type: ignore[misc]
     ...
 
 
@@ -869,9 +931,9 @@ def _value_or_dg(value: Value, dg: DG) -> Value:
 
 
 def _value_or_dg(
-    value: type[NoValue] | Value | None,
+    value: Union[None, Type[NoValue], Value],
     dg: DG,
-) -> DG | Value | None:
+) -> Union[DG, None, Value]:
     """Return either value, or None, or dg.
 
     This is needed because Widgets have meaningful return values. This is

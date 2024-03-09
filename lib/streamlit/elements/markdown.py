@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Optional, Union, cast
 
 from streamlit.proto.Markdown_pb2 import Markdown as MarkdownProto
 from streamlit.runtime.metrics_util import gather_metrics
@@ -26,19 +24,13 @@ if TYPE_CHECKING:
 
     from streamlit.delta_generator import DeltaGenerator
 
-MARKDOWN_HORIZONTAL_RULE_EXPRESSION: Final = "---"
-
 
 class MarkdownMixin:
     @gather_metrics("markdown")
     def markdown(
-        self,
-        body: SupportsStr,
-        unsafe_allow_html: bool = False,
-        *,  # keyword-only arguments:
-        help: str | None = None,
-    ) -> DeltaGenerator:
-        r"""Display string formatted as Markdown.
+        self, body: SupportsStr, unsafe_allow_html: bool = False
+    ) -> "DeltaGenerator":
+        """Display string formatted as Markdown.
 
         Parameters
         ----------
@@ -56,10 +48,6 @@ class MarkdownMixin:
               must be on their own lines). Supported LaTeX functions are listed
               at https://katex.org/docs/supported.html.
 
-            * Colored text, using the syntax ``:color[text to be colored]``,
-              where ``color`` needs to be replaced with any of the following
-              supported colors: blue, green, orange, red, violet, gray/grey, rainbow.
-
         unsafe_allow_html : bool
             By default, any HTML tags found in the body will be escaped and
             therefore treated as pure text. This behavior may be turned off by
@@ -71,48 +59,22 @@ class MarkdownMixin:
 
             https://github.com/streamlit/streamlit/issues/152
 
-        help : str
-            An optional tooltip that gets displayed next to the Markdown.
-
-        Examples
-        --------
-        >>> import streamlit as st
-        >>>
-        >>> st.markdown("*Streamlit* is **really** ***cool***.")
-        >>> st.markdown('''
-        ...     :red[Streamlit] :orange[can] :green[write] :blue[text] :violet[in]
-        ...     :gray[pretty] :rainbow[colors].''')
-        >>> st.markdown("Here's a bouquet &mdash;\
-        ...             :tulip::cherry_blossom::rose::hibiscus::sunflower::blossom:")
-        >>>
-        >>> multi = '''If you end a line with two spaces,
-        ... a soft return is used for the next line.
-        ...
-        ... Two (or more) newline characters in a row will result in a hard return.
-        ... '''
-        >>> st.markdown(multi)
-
-        .. output::
-           https://doc-markdown.streamlit.app/
-           height: 260px
+        Example
+        -------
+        >>> st.markdown('Streamlit is **_really_ cool**.')
 
         """
         markdown_proto = MarkdownProto()
 
         markdown_proto.body = clean_text(body)
         markdown_proto.allow_html = unsafe_allow_html
-        markdown_proto.element_type = MarkdownProto.Type.NATIVE
-        if help:
-            markdown_proto.help = help
 
         return self.dg._enqueue("markdown", markdown_proto)
 
     @gather_metrics("code")
     def code(
-        self,
-        body: SupportsStr,
-        language: str | None = "python",
-    ) -> DeltaGenerator:
+        self, body: SupportsStr, language: Optional[str] = "python"
+    ) -> "DeltaGenerator":
         """Display a code block with optional syntax highlighting.
 
         (This is a convenience wrapper around `st.markdown()`)
@@ -132,8 +94,6 @@ class MarkdownMixin:
 
         Example
         -------
-        >>> import streamlit as st
-        >>>
         >>> code = '''def hello():
         ...     print("Hello, Streamlit!")'''
         >>> st.code(code, language='python')
@@ -142,17 +102,12 @@ class MarkdownMixin:
         code_proto = MarkdownProto()
         markdown = f'```{language or ""}\n{body}\n```'
         code_proto.body = clean_text(markdown)
-        code_proto.element_type = MarkdownProto.Type.CODE
         return self.dg._enqueue("markdown", code_proto)
 
     @gather_metrics("caption")
     def caption(
-        self,
-        body: SupportsStr,
-        unsafe_allow_html: bool = False,
-        *,  # keyword-only arguments:
-        help: str | None = None,
-    ) -> DeltaGenerator:
+        self, body: SupportsStr, unsafe_allow_html: bool = False
+    ) -> "DeltaGenerator":
         """Display text in small font.
 
         This should be used for captions, asides, footnotes, sidenotes, and
@@ -161,22 +116,7 @@ class MarkdownMixin:
         Parameters
         ----------
         body : str
-            The text to display as Github-flavored Markdown. Syntax
-            information can be found at: https://github.github.com/gfm.
-
-            This also supports:
-
-            * Emoji shortcodes, such as ``:+1:``  and ``:sunglasses:``.
-              For a list of all supported codes,
-              see https://share.streamlit.io/streamlit/emoji-shortcodes.
-
-            * LaTeX expressions, by wrapping them in "$" or "$$" (the "$$"
-              must be on their own lines). Supported LaTeX functions are listed
-              at https://katex.org/docs/supported.html.
-
-            * Colored text, using the syntax ``:color[text to be colored]``,
-              where ``color`` needs to be replaced with any of the following
-              supported colors: blue, green, orange, red, violet, gray/grey, rainbow.
+            The text to display.
 
         unsafe_allow_html : bool
             By default, any HTML tags found in strings will be escaped and
@@ -189,33 +129,19 @@ class MarkdownMixin:
 
             https://github.com/streamlit/streamlit/issues/152
 
-        help : str
-            An optional tooltip that gets displayed next to the caption.
-
-        Examples
-        --------
-        >>> import streamlit as st
-        >>>
+        Example
+        -------
         >>> st.caption('This is a string that explains something above.')
-        >>> st.caption('A caption with _italics_ :blue[colors] and emojis :sunglasses:')
 
         """
         caption_proto = MarkdownProto()
         caption_proto.body = clean_text(body)
         caption_proto.allow_html = unsafe_allow_html
         caption_proto.is_caption = True
-        caption_proto.element_type = MarkdownProto.Type.CAPTION
-        if help:
-            caption_proto.help = help
         return self.dg._enqueue("markdown", caption_proto)
 
     @gather_metrics("latex")
-    def latex(
-        self,
-        body: SupportsStr | sympy.Expr,
-        *,  # keyword-only arguments:
-        help: str | None = None,
-    ) -> DeltaGenerator:
+    def latex(self, body: Union[SupportsStr, "sympy.Expr"]) -> "DeltaGenerator":
         # This docstring needs to be "raw" because of the backslashes in the
         # example below.
         r"""Display mathematical expressions formatted as LaTeX.
@@ -230,14 +156,9 @@ class MarkdownMixin:
             a good idea to use raw Python strings since LaTeX uses backslashes
             a lot.
 
-        help : str
-            An optional tooltip that gets displayed next to the LaTeX expression.
-
 
         Example
         -------
-        >>> import streamlit as st
-        >>>
         >>> st.latex(r'''
         ...     a + ar + a r^2 + a r^3 + \cdots + a r^{n-1} =
         ...     \sum_{k=0}^{n-1} ar^k =
@@ -252,32 +173,9 @@ class MarkdownMixin:
 
         latex_proto = MarkdownProto()
         latex_proto.body = "$$\n%s\n$$" % clean_text(body)
-        latex_proto.element_type = MarkdownProto.Type.LATEX
-        if help:
-            latex_proto.help = help
         return self.dg._enqueue("markdown", latex_proto)
 
-    @gather_metrics("divider")
-    def divider(self) -> DeltaGenerator:
-        """Display a horizontal rule.
-
-        .. note::
-            You can achieve the same effect with st.write("---") or
-            even just "---" in your script (via magic).
-
-        Example
-        -------
-        >>> import streamlit as st
-        >>>
-        >>> st.divider()
-
-        """
-        divider_proto = MarkdownProto()
-        divider_proto.body = MARKDOWN_HORIZONTAL_RULE_EXPRESSION
-        divider_proto.element_type = MarkdownProto.Type.DIVIDER
-        return self.dg._enqueue("markdown", divider_proto)
-
     @property
-    def dg(self) -> DeltaGenerator:
+    def dg(self) -> "DeltaGenerator":
         """Get our DeltaGenerator."""
         return cast("DeltaGenerator", self)

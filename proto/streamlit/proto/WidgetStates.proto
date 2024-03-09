@@ -1,5 +1,5 @@
 /**!
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,6 @@
  */
 
 syntax = "proto3";
-
-option java_package = "com.snowflake.apps.streamlit";
-option java_outer_classname = "WidgetStatesProto";
 
 import "streamlit/proto/Common.proto";
 import "streamlit/proto/Components.proto";
@@ -51,8 +48,5 @@ message WidgetState {
     ArrowTable arrow_value = 11;
     bytes bytes_value = 12;
     FileUploaderState file_uploader_state_value = 13;
-    // String value that resets itself to empty after the script has been run.
-    // This is used for the chat_input widget.
-    StringTriggerValue string_trigger_value = 14;
   }
 }

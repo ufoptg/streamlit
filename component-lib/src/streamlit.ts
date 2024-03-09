@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 
 // Safari doesn't support the EventTarget class, so we use a shim.
+import { EventTarget } from "event-target-shim";
 import { ArrowDataframeProto, ArrowTable } from "./ArrowTable";
 
 /** Object defining the currently set theme. */
@@ -68,8 +69,6 @@ export class Streamlit {
   public static readonly API_VERSION = 1;
 
   public static readonly RENDER_EVENT = "streamlit:render";
-
-  public static readonly INJECTED_STYLE_ELEMENT_ID = "__streamlit_injected_styles";
 
   /** Dispatches events received from Streamlit. */
   public static readonly events = new EventTarget();
@@ -230,12 +229,8 @@ export class Streamlit {
 }
 
 const _injectTheme = (theme: Theme) => {
-  let style = document.getElementById(Streamlit.INJECTED_STYLE_ELEMENT_ID);
-  if (!style) {
-    style = document.createElement("style");
-    style.id = Streamlit.INJECTED_STYLE_ELEMENT_ID;
-    document.head.appendChild(style);
-  }
+  const style = document.createElement("style");
+  document.head.appendChild(style);
   style.innerHTML = `
     :root {
       --primary-color: ${theme.primaryColor};

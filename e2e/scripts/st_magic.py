@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -135,25 +135,3 @@ def docstrings():
 
 
 docstrings()
-
-
-def my_func():
-    """my_func: this help block should be printed."""
-    pass
-
-
-my_func
-
-
-class MyClass:
-    """MyClass: this help block should be printed."""
-
-    def __init__(self):
-        """This should not be printed."""
-
-
-MyClass
-
-
-my_instance = MyClass()
-my_instance

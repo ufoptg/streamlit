@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,35 +20,28 @@ describe("st.header", () => {
   });
 
   it("displays correct number of header elements", () => {
-    cy.get(".element-container .stMarkdown h2").should("have.length", 3);
+    cy.get(".element-container .stMarkdown h2").should("have.length", 2);
   });
 
   it("displays correct number of title elements", () => {
-    cy.get(".element-container .stMarkdown h1").should("have.length", 4);
+    cy.get(".element-container .stMarkdown h1").should("have.length", 3);
   });
 
   it("displays correct number of subheader elements", () => {
-    cy.get(".element-container .stMarkdown h3").should("have.length", 3);
+    cy.get(".element-container .stMarkdown h3").should("have.length", 2);
   });
 
   it("displays a header", () => {
     cy.get(".element-container .stMarkdown h2").then(els => {
       expect(els[0].textContent).to.eq("This header is awesome!");
       expect(els[1].textContent).to.eq("This header is awesome too!");
-      expect(els[2].textContent).to.eq("This header with hidden anchor is awesome tooooo!");
     });
   });
 
-  it("displays headers with anchors and style icons", () => {
+  it("displays headers with anchors", () => {
     cy.get(".element-container .stMarkdown h2").then(els => {
       cy.wrap(els[0]).should("have.attr", "id", "this-header-is-awesome");
-      cy.wrap(els[0]).find("svg").should('exist');
-
       cy.wrap(els[1]).should("have.attr", "id", "awesome-header");
-      cy.wrap(els[1]).find("svg").should('exist');
-
-      cy.wrap(els[2]).should("have.attr", "id", "this-header-with-hidden-anchor-is-awesome-tooooo");
-      cy.wrap(els[2]).find("svg").should('not.exist');
     });
   });
 
@@ -61,7 +54,7 @@ describe("st.header", () => {
 
   it("should display links correctly", () => {
     cy
-      .getIndexed(".element-container .stMarkdown h1", 3)
+      .getIndexed(".element-container .stMarkdown h1", 2)
       .matchThemedSnapshots("heading_link");
   })
 });

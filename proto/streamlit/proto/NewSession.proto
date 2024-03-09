@@ -1,5 +1,5 @@
 /**!
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,8 @@
 
 syntax = "proto3";
 
-option java_package = "com.snowflake.apps.streamlit";
-option java_outer_classname = "NewSessionProto";
-
 import "streamlit/proto/AppPage.proto";
-import "streamlit/proto/SessionStatus.proto";
-
-// NOTE: These proto types are used by some external services so need to
-// remain relatively stable. While they aren't entirely set in stone, changing
-// them may require a good amount of effort so should be avoided if possible.
+import "streamlit/proto/SessionState.proto";
 
 // This is the first message that is sent when a new session starts.
 message NewSession {
@@ -64,7 +57,7 @@ message NewSession {
   string page_script_hash = 9;
 }
 
-// Contains the session status that existed at the time the user connected.
+// Contains the session state that existed at the time the user connected.
 // The contents of this message don't change over the lifetime of the app by
 // definition.
 message Initialize {
@@ -72,20 +65,16 @@ message Initialize {
 
   EnvironmentInfo environment_info = 3;
 
-  // The session status at the time the connection was established
-  SessionStatus session_status = 4;
+  // The session state at the time the connection was established
+  SessionState session_state = 4;
 
-  // DEPRECATED: We no longer send this to the frontend for security reasons.
-  // The actual command line as a string
+  // the actual command line as a string
   string command_line = 5;
 
   // The AppSession.id for this connection's AppSession.
   // This is used to associate uploaded files with the client that uploaded
   // them.
   string session_id = 6;
-
-  // True if the command used to start this app was `streamlit hello`.
-  bool is_hello = 7;
 }
 
 // App configuration options, initialized mainly from the
@@ -97,7 +86,7 @@ message Config {
   // See config option "global.maxCachedMessageAge".
   int32 max_cached_message_age = 3;
 
-  // DEPRECATED: the mapbox token was moved to the DeckGlJsonChart message.
+  // See config option "mapbox.token".
   string mapbox_token = 4;
 
   // See config option "server.allowRunOnSave".
@@ -109,23 +98,11 @@ message Config {
   // See config option "ui.hideSidebarNav".
   bool hide_sidebar_nav = 7;
 
-  // See config option "client.toolbarMode".
-  enum ToolbarMode {
-    AUTO = 0;
-    DEVELOPER = 1;
-    VIEWER = 2;
-    MINIMAL = 3;
-  }
-  ToolbarMode toolbar_mode = 8;
-
   reserved 1;
 }
 
 // Custom theme configuration options. Like other config options, these are set
 // in .streamlit/config.toml.
-//
-// IMPORTANT: This message is passed in JSON format in a host-to-guest postMessage. So DOT NOT
-// rename its proto fields!
 message CustomThemeConfig {
   enum BaseTheme {
     LIGHT = 0;
@@ -144,34 +121,6 @@ message CustomThemeConfig {
   string text_color = 4;
   FontFamily font = 5;
   BaseTheme base = 6;
-  string widget_background_color = 7;
-  string widget_border_color = 8;
-  Radii radii = 9;
-  string body_font = 13;
-  string code_font = 14;
-  repeated FontFace font_faces = 15;
-  FontSizes font_sizes = 16;
-  string skeleton_background_color = 17;
-}
-
-message FontFace {
-  string url = 1;
-  string family = 2;
-  int32 weight = 3;
-  string style = 4;
-}
-
-message Radii {
-  // In pixels.
-  int32 base_widget_radius = 1;
-  int32 checkbox_radius = 2;
-}
-
-message FontSizes {
-  // In pixels.
-  int32 tiny_font_size = 1;
-  int32 small_font_size = 2;
-  int32 base_font_size = 3;
 }
 
 // Data that identifies the Streamlit app creator.
@@ -179,10 +128,7 @@ message FontSizes {
 message UserInfo {
   string installation_id = 1;
   string installation_id_v3 = 5;
-
-  // DEPRECATED:
-  // string email = 2;
-  reserved 2;
+  string email = 2;
 }
 
 // Data that identifies the Streamlit app's environment.

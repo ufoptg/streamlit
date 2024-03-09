@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,47 +14,41 @@
 
 """Utility functions to use in our tests."""
 
-import json
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import Any, Dict
+from unittest.mock import patch
 
 from streamlit import config
-from streamlit.runtime.memory_uploaded_file_manager import MemoryUploadedFileManager
-from streamlit.runtime.scriptrunner import ScriptRunContext
-from streamlit.runtime.state import SafeSessionState, SessionState
-from tests.constants import SNOWFLAKE_CREDENTIAL_FILE
-
-if TYPE_CHECKING:
-    from snowflake.snowpark import Session
-
-# Reexport functions that were moved to main codebase
-from streamlit.testing.v1.util import (
-    build_mock_config_get_option as build_mock_config_get_option,
-)
-from streamlit.testing.v1.util import patch_config_options as patch_config_options
 
 
-def should_skip_pydantic_tests() -> bool:
-    try:
-        import pydantic
+@contextmanager
+def patch_config_options(config_overrides: Dict[str, Any]):
+    """A context manager that overrides config options. It can
+    also be used as a function decorator.
 
-        return not pydantic.__version__.startswith("1.")
-    except ImportError:
-        return True
+    Examples:
+    >>> with patch_config_options({"server.headless": True}):
+    ...     assert(config.get_option("server.headless") is True)
+    ...     # Other test code that relies on these options
+
+    >>> @patch_config_options({"server.headless": True})
+    ... def test_my_thing():
+    ...   assert(config.get_option("server.headless") is True)
+    """
+    mock_get_option = build_mock_config_get_option(config_overrides)
+    with patch.object(config, "get_option", new=mock_get_option):
+        yield
 
 
-def create_mock_script_run_ctx() -> ScriptRunContext:
-    """Create a ScriptRunContext for use in tests."""
-    return ScriptRunContext(
-        session_id="mock_session_id",
-        _enqueue=lambda msg: None,
-        query_string="mock_query_string",
-        session_state=SafeSessionState(SessionState(), lambda: None),
-        uploaded_file_mgr=MemoryUploadedFileManager("/mock/upload"),
-        main_script_path="",
-        page_script_hash="mock_page_script_hash",
-        user_info={"email": "mock@test.com"},
-    )
+def build_mock_config_get_option(overrides_dict):
+    orig_get_option = config.get_option
+
+    def mock_config_get_option(name):
+        if name in overrides_dict:
+            return overrides_dict[name]
+        return orig_get_option(name)
+
+    return mock_config_get_option
 
 
 def build_mock_config_is_manually_set(overrides_dict):
@@ -100,15 +94,3 @@ def normalize_md(txt: str) -> str:
     txt = txt.replace("OMG_LINK", "](")
 
     return txt.strip()
-
-
-@contextmanager
-def create_snowpark_session() -> "Session":
-    from snowflake.snowpark import Session
-
-    credential = json.loads(SNOWFLAKE_CREDENTIAL_FILE.read_text())
-    session = Session.builder.configs(credential).create()
-    try:
-        yield session
-    finally:
-        session.close()

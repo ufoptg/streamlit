@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+ * Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { tableToIPC, tableFromIPC, Table, Type, Vector, StructRow } from "apache-arrow";
+import { Table, Type, Vector } from "apache-arrow";
+import { StructRow } from "apache-arrow/vector/row";
 
 export type CellType = "blank" | "index" | "columns" | "data";
 
@@ -69,13 +70,13 @@ export class ArrowTable {
     columnsBuffer: Uint8Array,
     styler?: any
   ) {
-    this.dataTable = tableFromIPC(dataBuffer);
-    this.indexTable = tableFromIPC(indexBuffer);
-    this.columnsTable = tableFromIPC(columnsBuffer);
+    this.dataTable = Table.from(dataBuffer);
+    this.indexTable = Table.from(indexBuffer);
+    this.columnsTable = Table.from(columnsBuffer);
     this.styler = styler
       ? {
           caption: styler.caption,
-          displayValuesTable: tableFromIPC(styler.displayValues),
+          displayValuesTable: Table.from(styler.displayValues),
           styles: styler.styles,
           uuid: styler.uuid
         }
@@ -83,11 +84,11 @@ export class ArrowTable {
   }
 
   get rows(): number {
-    return this.indexTable.numRows + this.columnsTable.numCols;
+    return this.indexTable.length + this.columnsTable.numCols;
   }
 
   get columns(): number {
-    return this.indexTable.numCols + this.columnsTable.numRows;
+    return this.indexTable.numCols + this.columnsTable.length;
   }
 
   get headerRows(): number {
@@ -99,7 +100,7 @@ export class ArrowTable {
   }
 
   get dataRows(): number {
-    return this.dataTable.numRows;
+    return this.dataTable.length;
   }
 
   get dataColumns(): number {
@@ -206,7 +207,7 @@ export class ArrowTable {
     rowIndex: number,
     columnIndex: number
   ): DataType => {
-    const column = table.getChildAt(columnIndex);
+    const column = table.getColumnAt(columnIndex);
     if (column === null) {
       return "";
     }
@@ -227,9 +228,9 @@ export class ArrowTable {
    */
   public serialize(): ArrowTableProto {
     return {
-      data: tableToIPC(this.dataTable),
-      index: tableToIPC(this.indexTable),
-      columns: tableToIPC(this.columnsTable )
+      data: this.dataTable.serialize(),
+      index: this.indexTable.serialize(),
+      columns: this.columnsTable.serialize()
     };
   }
 

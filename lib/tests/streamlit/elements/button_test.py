@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,17 +46,3 @@ class ButtonTest(DeltaGeneratorTestCase):
 
         c = self.get_delta_from_queue().new_element.button
         self.assertEqual(c.disabled, True)
-
-    def test_use_container_width_can_be_set_to_true(self):
-        """Test use_container_width can be set to true."""
-        st.button("the label", use_container_width=True)
-
-        c = self.get_delta_from_queue().new_element.button
-        self.assertEqual(c.use_container_width, True)
-
-    def test_use_container_width_is_false_by_default(self):
-        """Test use_container_width is false by default."""
-        st.button("the label")
-
-        c = self.get_delta_from_queue().new_element.button
-        self.assertEqual(c.use_container_width, False)

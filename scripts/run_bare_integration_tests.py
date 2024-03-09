@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ import click
 # Where we expect to find the example files.
 E2E_DIR = "e2e/scripts"
 
-EXCLUDED_FILENAMES: Set[str] = set()
+EXCLUDED_FILENAMES = set()  # type: Set[str]
 
 # st_experimental_rerun.py calls st.experimental_rerun which raises a
 # RerunException when called within plain Python.

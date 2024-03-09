@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ class ArrowDataFrameDimensionsTest(DeltaGeneratorTestCase):
     def _do_test(self, fn, expectedWidth, expectedHeight):
         df = pd.DataFrame({"A": [1, 2, 3, 4, 5]})
 
-        fn(st.dataframe, df)
+        fn(st._arrow_dataframe, df)
         arrow_data_frame = self.get_delta_from_queue().new_element.arrow_data_frame
         self.assertEqual(arrow_data_frame.width, expectedWidth)
         self.assertEqual(arrow_data_frame.height, expectedHeight)

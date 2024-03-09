@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,12 +34,10 @@ class WebSocketHeadersTest(ServerTestCase):
             await self.server.start()
             await self.ws_connect()
 
-            session_mgr = self.server._runtime._session_mgr
-
             # Get our client's session_id and some other stuff
-            self.assertEqual(1, session_mgr.num_active_sessions())
-            session_info = session_mgr.list_active_sessions()[0]
-            session_id = session_info.session.id
+            self.assertEqual(1, len(self.server._runtime._session_info_by_id))
+            session_id = list(self.server._runtime._session_info_by_id.keys())[0]
+            session_info = self.server._runtime._session_info_by_id[session_id]
             self.assertIsInstance(session_info.client, BrowserWebSocketHandler)
 
             # Mock get_script_run_ctx() to return our session_id

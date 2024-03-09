@@ -1,4 +1,4 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2024)
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ from tornado.httputil import HTTPHeaders
 
 from streamlit.proto.openmetrics_data_model_pb2 import MetricSet as MetricSetProto
 from streamlit.runtime.stats import CacheStat
-from streamlit.web.server.server import METRIC_ENDPOINT
 from streamlit.web.server.stats_request_handler import StatsRequestHandler
 
 
@@ -33,7 +32,7 @@ class StatsHandlerTest(tornado.testing.AsyncHTTPTestCase):
         return tornado.web.Application(
             [
                 (
-                    rf"/{METRIC_ENDPOINT}",
+                    r"/st-metrics",
                     StatsRequestHandler,
                     dict(stats_manager=mock_stats_manager),
                 )
@@ -42,7 +41,7 @@ class StatsHandlerTest(tornado.testing.AsyncHTTPTestCase):
 
     def test_no_stats(self):
         """If we have no stats, we expect to see just the header and footer."""
-        response = self.fetch("/_stcore/metrics")
+        response = self.fetch("/st-metrics")
         self.assertEqual(200, response.code)
 
         expected_body = (
@@ -53,16 +52,6 @@ class StatsHandlerTest(tornado.testing.AsyncHTTPTestCase):
         ).encode("utf-8")
 
         self.assertEqual(expected_body, response.body)
-
-    def test_deprecated_endpoint(self):
-        response = self.fetch("/st-metrics")
-
-        self.assertEqual(200, response.code)
-        self.assertEqual(
-            response.headers["link"],
-            f'<http://127.0.0.1:{self.get_http_port()}/_stcore/metrics>; rel="alternate"',
-        )
-        self.assertEqual(response.headers["deprecation"], "True")
 
     def test_has_stats(self):
         self.mock_stats = [
@@ -78,7 +67,7 @@ class StatsHandlerTest(tornado.testing.AsyncHTTPTestCase):
             ),
         ]
 
-        response = self.fetch("/_stcore/metrics")
+        response = self.fetch("/st-metrics")
         self.assertEqual(200, response.code)
         self.assertEqual(
             "application/openmetrics-text", response.headers.get("Content-Type")
@@ -94,11 +83,6 @@ class StatsHandlerTest(tornado.testing.AsyncHTTPTestCase):
         ).encode("utf-8")
 
         self.assertEqual(expected_body, response.body)
-
-    def test_new_metrics_endpoint_should_not_display_deprecation_warning(self):
-        response = self.fetch("/_stcore/metrics")
-        self.assertNotIn("link", response.headers)
-        self.assertNotIn("deprecation", response.headers)
 
     def test_protobuf_stats(self):
         """Stats requests are returned in OpenMetrics protobuf format
@@ -124,7 +108,7 @@ class StatsHandlerTest(tornado.testing.AsyncHTTPTestCase):
         headers.add("Accept", "application/x-protobuf")
         headers.add("Accept", "text/html")
 
-        response = self.fetch("/_stcore/metrics", headers=headers)
+        response = self.fetch("/st-metrics", headers=headers)
         self.assertEqual(200, response.code)
         self.assertEqual("application/x-protobuf", response.headers.get("Content-Type"))
 
